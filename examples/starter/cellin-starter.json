@@ -1,0 +1,6 @@
+{
+  "database_path": "starter.sqlite",
+  "profile_name": "balanced",
+  "runtime_id": "starter-workspace",
+  "trace_path": "starter-traces.jsonl"
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "envelope_id": "starter-text-1",
+    "modality": "text",
+    "payload": "Atlas stores memory atoms in a graph for retrieval.",
+    "source_id": "starter:text-1",
+    "source_type": "example",
+    "observed_at": "2026-04-01T10:00:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  },
+  {
+    "envelope_id": "starter-markdown-1",
+    "modality": "markdown",
+    "payload": "# Atlas\\nWeighted retrieval keeps responses grounded in graph evidence.",
+    "source_id": "starter:markdown-1",
+    "source_type": "example",
+    "observed_at": "2026-04-01T10:01:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  },
+  {
+    "envelope_id": "starter-chat-1",
+    "modality": "chat",
+    "payload": {
+      "conversation_id": "atlas-demo",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Can Atlas dream to consolidate duplicate notes?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yes, the dream runner can create summary memories and repair contradictions."
+        }
+      ]
+    },
+    "source_id": "starter:chat-1",
+    "source_type": "example",
+    "observed_at": "2026-04-01T10:02:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  },
+  {
+    "envelope_id": "starter-image-1",
+    "modality": "image",
+    "payload": {
+      "path": "starter-whiteboard.png",
+      "caption": "Whiteboard sketch of a memory graph and dream loop",
+      "ocr_text": "memory graph dream loop"
+    },
+    "source_id": "starter:image-1",
+    "source_type": "example",
+    "observed_at": "2026-04-01T10:03:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  }
+]
