@@ -131,6 +131,11 @@ def _load_edge(payload: str) -> MemoryEdge:
     )
 
 
+def _edge_archived(edge: MemoryEdge) -> bool:
+    archived = edge.metadata.get("archived")
+    return bool(archived) if isinstance(archived, bool) else False
+
+
 class _SQLiteBase:
     def __init__(self, database_path: str) -> None:
         self._database_path = database_path
@@ -222,4 +227,9 @@ class SQLiteGraphStore(_SQLiteBase):
                 """,
                 (memory_id, memory_id),
             ).fetchall()
-        return tuple(_load_edge(row[0]) for row in rows)
+        return tuple(edge for row in rows if not _edge_archived(edge := _load_edge(row[0])))
+
+    def list_edges(self) -> tuple[MemoryEdge, ...]:
+        with self._connect() as connection:
+            rows = connection.execute("SELECT payload FROM edges ORDER BY edge_id").fetchall()
+        return tuple(edge for row in rows if not _edge_archived(edge := _load_edge(row[0])))

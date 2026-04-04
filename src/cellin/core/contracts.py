@@ -106,6 +106,9 @@ class GraphStore(Protocol):
     def neighbors(self, memory_id: str) -> Sequence[MemoryEdge]:
         """Return adjacent graph edges."""
 
+    def list_edges(self) -> Sequence[MemoryEdge]:
+        """Return all active graph edges."""
+
 
 class MemoryStore(Protocol):
     """Persistence operations for retrievable memory atoms."""

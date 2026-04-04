@@ -43,7 +43,7 @@ class RetrievalCandidateGenerator:
     lexical_limit: int = 4
 
     def collect(self, query: str, *, limit: int) -> tuple[MemoryAtom, ...]:
-        memories = tuple(self.memory_store.list())
+        memories = tuple(memory for memory in self.memory_store.list() if not memory.decay.archived)
         if not memories:
             return ()
 
@@ -78,6 +78,8 @@ class RetrievalCandidateGenerator:
                         neighbor_id
                     )
                     if neighbor is None:
+                        continue
+                    if neighbor.decay.archived:
                         continue
 
                     candidates[neighbor_id] = _annotate_distance(neighbor, 1)
