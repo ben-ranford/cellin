@@ -1,0 +1,62 @@
+[
+  {
+    "envelope_id": "text-1",
+    "modality": "text",
+    "payload": "Atlas architecture stores memory atoms in a graph.",
+    "source_id": "note-1",
+    "source_type": "note",
+    "observed_at": "2026-04-04T00:00:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  },
+  {
+    "envelope_id": "markdown-1",
+    "modality": "markdown",
+    "payload": "# Atlas\\nWeighted retrieval ranks memory bundles.",
+    "source_id": "doc-1",
+    "source_type": "document",
+    "observed_at": "2026-04-04T00:10:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  },
+  {
+    "envelope_id": "chat-1",
+    "modality": "chat",
+    "payload": {
+      "conversation_id": "conv-1",
+      "messages": [
+        {
+          "role": "user",
+          "content": "We should ship the atlas memory graph."
+        },
+        {
+          "role": "assistant",
+          "content": "Let's keep retrieval explainability visible."
+        }
+      ]
+    },
+    "source_id": "chat-1",
+    "source_type": "chat",
+    "observed_at": "2026-04-04T00:20:00+00:00",
+    "metadata": {
+      "conversation_id": "conv-1"
+    }
+  },
+  {
+    "envelope_id": "image-1",
+    "modality": "image",
+    "payload": {
+      "path": "fixtures/atlas-whiteboard.png",
+      "caption": "Whiteboard sketch of the atlas memory graph"
+    },
+    "source_id": "image-1",
+    "source_type": "image",
+    "observed_at": "2026-04-04T00:30:00+00:00",
+    "metadata": {
+      "topic": "atlas",
+      "ocr_text": "memory graph sketch"
+    }
+  }
+]
