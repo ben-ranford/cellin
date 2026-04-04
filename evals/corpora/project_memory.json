@@ -1,0 +1,38 @@
+[
+  {
+    "memory_id": "atlas-arch",
+    "text": "Atlas architecture uses a memory graph and weighted retrieval for planning.",
+    "observed_at": "2026-03-28T00:00:00+00:00",
+    "salience_score": 0.95,
+    "trust_score": 0.9,
+    "access_count": 4,
+    "metadata": {
+      "topic": "atlas",
+      "token_count": 10
+    }
+  },
+  {
+    "memory_id": "atlas-vision",
+    "text": "Atlas roadmap focuses on graph consolidation and memory abstractions.",
+    "observed_at": "2026-02-05T00:00:00+00:00",
+    "salience_score": 0.76,
+    "trust_score": 0.85,
+    "access_count": 1,
+    "metadata": {
+      "topic": "atlas",
+      "token_count": 9
+    }
+  },
+  {
+    "memory_id": "garden-note",
+    "text": "Compost ratios and tomato pruning notes for the garden shed.",
+    "observed_at": "2026-04-02T00:00:00+00:00",
+    "salience_score": 0.2,
+    "trust_score": 0.7,
+    "access_count": 0,
+    "metadata": {
+      "topic": "garden",
+      "token_count": 10
+    }
+  }
+]

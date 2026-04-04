@@ -1,0 +1,26 @@
+[
+  {
+    "memory_id": "atlas-rollout-green",
+    "text": "Atlas rollout is green and stable in staging.",
+    "observed_at": "2026-04-01T00:00:00+00:00",
+    "salience_score": 0.72,
+    "trust_score": 0.95,
+    "access_count": 1,
+    "metadata": {
+      "topic": "atlas-rollout",
+      "token_count": 8
+    }
+  },
+  {
+    "memory_id": "atlas-rollout-rollback",
+    "text": "Atlas rollout was rolled back after failures in staging.",
+    "observed_at": "2026-04-02T00:00:00+00:00",
+    "salience_score": 0.7,
+    "trust_score": 0.92,
+    "access_count": 1,
+    "metadata": {
+      "topic": "atlas-rollout",
+      "token_count": 9
+    }
+  }
+]

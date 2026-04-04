@@ -1,0 +1,26 @@
+[
+  {
+    "memory_id": "deploy-last-quarter",
+    "text": "Last quarter the rollout stalled during staging verification.",
+    "observed_at": "2026-01-10T00:00:00+00:00",
+    "salience_score": 0.6,
+    "trust_score": 0.8,
+    "access_count": 0,
+    "metadata": {
+      "topic": "deployment",
+      "token_count": 8
+    }
+  },
+  {
+    "memory_id": "deploy-yesterday",
+    "text": "Yesterday the staging rollout completed with green checks.",
+    "observed_at": "2026-04-03T00:00:00+00:00",
+    "salience_score": 0.7,
+    "trust_score": 0.95,
+    "access_count": 2,
+    "metadata": {
+      "topic": "deployment",
+      "token_count": 8
+    }
+  }
+]

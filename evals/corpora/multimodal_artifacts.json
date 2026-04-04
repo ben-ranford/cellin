@@ -1,0 +1,62 @@
+[
+  {
+    "envelope_id": "mm-text-1",
+    "modality": "text",
+    "payload": "Atlas stores memory atoms in a graph for retrieval.",
+    "source_id": "doc:text-1",
+    "source_type": "fixture",
+    "observed_at": "2026-04-01T10:00:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  },
+  {
+    "envelope_id": "mm-markdown-1",
+    "modality": "markdown",
+    "payload": "# Atlas\\nWeighted retrieval keeps responses grounded in graph evidence.",
+    "source_id": "doc:markdown-1",
+    "source_type": "fixture",
+    "observed_at": "2026-04-01T10:01:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  },
+  {
+    "envelope_id": "mm-chat-1",
+    "modality": "chat",
+    "payload": {
+      "conversation_id": "atlas-sync",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Can Atlas consolidate duplicate planning notes?"
+        },
+        {
+          "role": "assistant",
+          "content": "Yes, dream passes can rewrite the graph deterministically."
+        }
+      ]
+    },
+    "source_id": "chat:atlas-sync",
+    "source_type": "fixture",
+    "observed_at": "2026-04-01T10:02:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  },
+  {
+    "envelope_id": "mm-image-1",
+    "modality": "image",
+    "payload": {
+      "path": "fixtures/atlas-whiteboard.png",
+      "caption": "Whiteboard sketch of a memory graph and ranking pipeline",
+      "ocr_text": "graph memory retrieval pipeline"
+    },
+    "source_id": "image:atlas-whiteboard",
+    "source_type": "fixture",
+    "observed_at": "2026-04-01T10:03:00+00:00",
+    "metadata": {
+      "topic": "atlas"
+    }
+  }
+]

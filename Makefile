@@ -1,6 +1,6 @@
 UV ?= python3 -m uv
 
-.PHONY: bootstrap hooks fmt fmt-check lint typecheck test eval-smoke eval verify ci docs
+.PHONY: bootstrap hooks fmt fmt-check lint typecheck test eval-smoke eval-full eval verify ci docs
 
 bootstrap:
 	$(UV) sync --dev
@@ -25,9 +25,12 @@ test:
 	$(UV) run pytest
 
 eval-smoke:
-	$(UV) run pytest tests/evals -q
+	$(UV) run python -m cellin.evals smoke --output eval-results/smoke.json
 
-eval: eval-smoke
+eval-full:
+	$(UV) run python -m cellin.evals full --output eval-results/full.json
+
+eval: eval-full
 
 verify: fmt-check lint typecheck test eval-smoke
 
