@@ -1,0 +1,12 @@
+site_name: Cellin
+repo_name: ben-ranford/cellin
+repo_url: https://github.com/ben-ranford/cellin
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Architecture: architecture/README.md
+  - Evals: evals/README.md
+  - Plan: pluggable-evals-rigor-plan.md

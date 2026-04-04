@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cellin"
+version = "0.1.0"
+description = "Pluggable multimodal memory, retrieval, and dreaming system."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "lefthook>=1.7.15",
+  "mkdocs-material>=9.5.34",
+  "mypy>=1.11.2",
+  "pytest>=8.3.3",
+  "ruff>=0.6.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cellin"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["cellin"]
+strict = true
+warn_unused_configs = true
