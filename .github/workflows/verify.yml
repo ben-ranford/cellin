@@ -34,7 +34,7 @@ jobs:
 
       - name: Upload smoke eval report
         if: always() && hashFiles('eval-results/smoke.json') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-eval-report
           path: eval-results/smoke.json
@@ -62,7 +62,7 @@ jobs:
         run: make eval-full
 
       - name: Upload full eval report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: full-eval-report
           path: eval-results/full.json
