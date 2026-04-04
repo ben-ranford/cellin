@@ -1,6 +1,6 @@
 UV ?= python3 -m uv
 
-.PHONY: bootstrap hooks fmt fmt-check lint typecheck test eval-smoke eval-full eval verify ci docs
+.PHONY: bootstrap hooks fmt fmt-check lint typecheck test eval-smoke eval-full eval package package-smoke release-smoke verify ci docs
 
 bootstrap:
 	$(UV) sync --dev
@@ -31,6 +31,21 @@ eval-full:
 	$(UV) run python -m cellin.evals full --output eval-results/full.json
 
 eval: eval-full
+
+package:
+	rm -rf dist build
+	$(UV) run python -m build
+
+package-smoke: package
+	$(UV) run twine check --strict dist/*
+	tmpdir=$$(mktemp -d); \
+	python3 -m venv "$$tmpdir/venv"; \
+	"$$tmpdir/venv/bin/pip" install --upgrade pip >/dev/null; \
+	"$$tmpdir/venv/bin/pip" install dist/*.whl >/dev/null; \
+	"$$tmpdir/venv/bin/cellin" plugin list | grep -q "in-memory-trace-sink"; \
+	rm -rf "$$tmpdir"
+
+release-smoke: ci package-smoke
 
 verify: fmt-check lint typecheck test eval-smoke
 

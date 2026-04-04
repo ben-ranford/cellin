@@ -30,6 +30,8 @@ The repository is in active bootstrap. The current goal is to land the local-fir
 - `make typecheck`
 - `make test`
 - `make eval-smoke`
+- `make package-smoke`
+- `make release-smoke`
 - `make verify`
 - `make ci`
 
@@ -37,4 +39,10 @@ The repository is in active bootstrap. The current goal is to land the local-fir
 
 - [Architecture Overview](docs/architecture/README.md)
 - [Eval Strategy](docs/evals/README.md)
+- [Release Guide](RELEASING.md)
 - [Implementation Plan](docs/pluggable-evals-rigor-plan.md)
+
+## Release Channels
+
+- Stable releases are published from pushed semver tags through `.github/workflows/release.yml`.
+- Prereleases are published from manual GitHub Actions runs through `.github/workflows/rolling-release.yml`.
