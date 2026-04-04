@@ -55,8 +55,8 @@ def test_ingestion_pipeline_persists_memories_edges_and_vectors(tmp_path) -> Non
     assert "Whiteboard sketch" in image_memory.text
     assert "memory graph sketch" in image_memory.text
 
-    vector_results = vector_index.search("atlas memory graph", limit=2)
-    assert vector_results[0].memory_id in {"text-1", "image-1"}
+    vector_results = vector_index.search("atlas memory graph", limit=3)
+    assert {result.memory_id for result in vector_results} >= {"text-1", "image-1"}
 
     neighbors = graph_store.neighbors("text-1")
     assert neighbors
