@@ -1,0 +1,14 @@
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      run: python3 -m uv run ruff format src tests docs
+    lint:
+      run: python3 -m uv run ruff check --fix src tests docs
+
+pre-push:
+  commands:
+    tests:
+      run: make test
+    eval-smoke:
+      run: make eval-smoke
