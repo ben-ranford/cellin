@@ -1,0 +1,38 @@
+[
+  {
+    "memory_id": "chat-standup-1",
+    "text": "Standup note: Atlas planning note tracks open retrieval blockers for the memory graph.",
+    "observed_at": "2026-04-01T08:00:00+00:00",
+    "salience_score": 0.74,
+    "trust_score": 0.92,
+    "access_count": 2,
+    "metadata": {
+      "topic": "atlas-standup",
+      "token_count": 12
+    }
+  },
+  {
+    "memory_id": "chat-standup-2",
+    "text": "Standup note: Atlas planning note tracks open retrieval blockers for the memory graph.",
+    "observed_at": "2026-04-01T08:05:00+00:00",
+    "salience_score": 0.72,
+    "trust_score": 0.9,
+    "access_count": 1,
+    "metadata": {
+      "topic": "atlas-standup",
+      "token_count": 12
+    }
+  },
+  {
+    "memory_id": "chat-action",
+    "text": "Action item: tighten eval reporting so quality regressions show up in pull requests.",
+    "observed_at": "2026-04-01T08:07:00+00:00",
+    "salience_score": 0.68,
+    "trust_score": 0.94,
+    "access_count": 1,
+    "metadata": {
+      "topic": "atlas-standup",
+      "token_count": 11
+    }
+  }
+]
