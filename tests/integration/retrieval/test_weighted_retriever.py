@@ -61,6 +61,9 @@ class InMemoryGraphStore(GraphStore):
             if edge.source_id == memory_id or edge.target_id == memory_id
         )
 
+    def list_edges(self) -> tuple[MemoryEdge, ...]:
+        return tuple(self._edges)
+
 
 def _memory(
     memory_id: str,

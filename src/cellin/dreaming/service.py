@@ -1,0 +1,96 @@
+"""Dream execution and rollback orchestration."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import replace
+from datetime import UTC, datetime
+from typing import Protocol
+
+from cellin.core import GraphStore, MemoryStore
+from cellin.dreaming.models import DreamDiff, DreamRunResult
+from cellin.dreaming.scheduler import DeterministicDreamScheduler
+from cellin.dreaming.strategies import (
+    AbstractionDreamStrategy,
+    ContradictionRepairDreamStrategy,
+    DeduplicationDreamStrategy,
+)
+
+
+class DreamExecutable(Protocol):
+    def execute(
+        self,
+        graph_store: GraphStore,
+        memory_store: MemoryStore,
+        *,
+        at: datetime | None = None,
+    ) -> DreamRunResult | None:
+        """Execute a deterministic dream strategy."""
+
+
+class DreamRunner:
+    """Runs deterministic dream strategies and can roll them back."""
+
+    def __init__(
+        self,
+        *,
+        graph_store: GraphStore,
+        memory_store: MemoryStore,
+        scheduler: DeterministicDreamScheduler | None = None,
+        strategies: Mapping[str, DreamExecutable] | None = None,
+    ) -> None:
+        self.graph_store = graph_store
+        self.memory_store = memory_store
+        self.scheduler = scheduler or DeterministicDreamScheduler(memory_store, graph_store)
+        self.strategies = strategies or {
+            "deduplication": DeduplicationDreamStrategy(),
+            "contradiction_repair": ContradictionRepairDreamStrategy(),
+            "abstraction": AbstractionDreamStrategy(),
+        }
+
+    def run_strategy(
+        self, strategy_name: str, *, at: datetime | None = None
+    ) -> DreamRunResult | None:
+        strategy = self.strategies[strategy_name]
+        when = at or datetime.now(UTC)
+        result = strategy.execute(self.graph_store, self.memory_store, at=when)
+        if result is not None:
+            self.scheduler.record_run(strategy_name, when)
+        return result
+
+    def run_pending(self, *, now: datetime | None = None) -> tuple[DreamRunResult, ...]:
+        when = now or datetime.now(UTC)
+        results: list[DreamRunResult] = []
+        for scheduled in self.scheduler.plan(when):
+            result = self.run_strategy(scheduled.strategy_name, at=scheduled.scheduled_for)
+            if result is not None:
+                results.append(result)
+        return tuple(results)
+
+    def rollback(self, diff: DreamDiff) -> None:
+        for edge_change in reversed(diff.edge_changes):
+            if edge_change.before is None and edge_change.after is not None:
+                self.graph_store.upsert_edge(
+                    replace(
+                        edge_change.after,
+                        metadata={**edge_change.after.metadata, "archived": True},
+                    )
+                )
+                continue
+
+            if edge_change.before is not None:
+                self.graph_store.upsert_edge(edge_change.before)
+
+        for memory_change in reversed(diff.memory_changes):
+            if memory_change.before is None and memory_change.after is not None:
+                archived = replace(
+                    memory_change.after,
+                    decay=replace(memory_change.after.decay, archived=True),
+                )
+                self.memory_store.put(archived)
+                self.graph_store.upsert_memory(archived)
+                continue
+
+            if memory_change.before is not None:
+                self.memory_store.put(memory_change.before)
+                self.graph_store.upsert_memory(memory_change.before)

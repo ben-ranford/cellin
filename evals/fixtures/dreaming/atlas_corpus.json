@@ -1,0 +1,35 @@
+[
+  {
+    "memory_id": "atlas-modalities",
+    "text": "Atlas stores multimodal artifacts in long-term memory for later recall.",
+    "observed_at": "2026-03-28T00:00:00+00:00",
+    "salience_score": 0.74,
+    "trust_score": 0.93,
+    "metadata": {
+      "topic": "atlas",
+      "token_count": 10
+    }
+  },
+  {
+    "memory_id": "atlas-retrieval",
+    "text": "Weighted retrieval ranks memories using trust, salience, and graph proximity.",
+    "observed_at": "2026-03-30T00:00:00+00:00",
+    "salience_score": 0.79,
+    "trust_score": 0.92,
+    "metadata": {
+      "topic": "atlas",
+      "token_count": 10
+    }
+  },
+  {
+    "memory_id": "atlas-dreaming",
+    "text": "Dream passes consolidate graph memories so future retrieval needs fewer hops.",
+    "observed_at": "2026-04-02T00:00:00+00:00",
+    "salience_score": 0.82,
+    "trust_score": 0.9,
+    "metadata": {
+      "topic": "atlas",
+      "token_count": 11
+    }
+  }
+]
