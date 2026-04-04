@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from dataclasses import dataclass
@@ -17,7 +18,9 @@ def _tokenize(text: str) -> list[str]:
 def _vectorize(text: str) -> tuple[float, ...]:
     buckets = [0.0] * VECTOR_SIZE
     for token in _tokenize(text):
-        buckets[hash(token) % VECTOR_SIZE] += 1.0
+        digest = hashlib.sha256(token.encode("utf-8")).digest()
+        bucket_index = int.from_bytes(digest[:4], byteorder="big") % VECTOR_SIZE
+        buckets[bucket_index] += 1.0
     norm = math.sqrt(sum(value * value for value in buckets))
     if norm == 0:
         return tuple(buckets)
