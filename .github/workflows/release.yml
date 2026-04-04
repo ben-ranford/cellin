@@ -1,0 +1,54 @@
+name: release
+
+"on":
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Sync dependencies
+        run: python -m uv sync --dev --frozen
+
+      - name: Run release smoke
+        run: make release-smoke
+
+      - name: Generate checksums
+        shell: bash
+        run: shasum -a 256 dist/* > dist/SHA256SUMS.txt
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ github.ref_name }}
+          path: dist/*
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes

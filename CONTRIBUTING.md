@@ -22,7 +22,15 @@ The canonical checks are:
 - `make typecheck`
 - `make test`
 - `make eval-smoke`
+- `make package-smoke`
 - `make ci`
+
+## Release Workflow
+
+- Stable releases are cut from semver tags such as `v0.1.0`.
+- Manual prereleases are created through the GitHub Actions `rolling-release` workflow.
+- Run `make release-smoke` before you cut or approve a release-related change.
+- Use the guidance in `RELEASING.md` for tag naming, release channels, and artifact expectations.
 
 ## Pull Requests
 

@@ -1,0 +1,26 @@
+changelog:
+  categories:
+    - title: Features
+      labels:
+        - enhancement
+        - multimodal
+        - retrieval
+        - dreaming
+        - evals
+        - plugin
+    - title: Architecture and Rigor
+      labels:
+        - architecture
+        - rigor-uplift
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Fixes
+      labels:
+        - bug
+  exclude:
+    labels:
+      - question
+      - duplicate
+      - invalid
+      - wontfix
