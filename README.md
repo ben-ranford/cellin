@@ -16,7 +16,7 @@ cd cellin
 make bootstrap
 ```
 
-After the first public PyPI release:
+Install from [PyPI](https://pypi.org/project/cellin/):
 
 ```bash
 python3 -m pip install cellin
