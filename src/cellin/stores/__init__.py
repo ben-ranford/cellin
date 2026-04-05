@@ -1,7 +1,9 @@
 """Local persistence primitives for Cellin."""
 
 from cellin.stores.in_memory import InMemoryGraphStore, InMemoryMemoryStore
+from cellin.stores.mongodb import MongoDBGraphStore, MongoDBMemoryStore
 from cellin.stores.pgvector import PGVectorStore
+from cellin.stores.redis import RedisGraphStore, RedisMemoryStore
 from cellin.stores.sql_backends import (
     DuckDBGraphStore,
     DuckDBMemoryStore,
@@ -24,8 +26,12 @@ __all__ = [
     "MySQLMemoryStore",
     "PostgreSQLGraphStore",
     "PostgreSQLMemoryStore",
+    "MongoDBGraphStore",
+    "MongoDBMemoryStore",
     "SearchResult",
     "PGVectorStore",
+    "RedisGraphStore",
+    "RedisMemoryStore",
     "SQLiteGraphStore",
     "SQLiteMemoryStore",
     "SQLiteVecStore",

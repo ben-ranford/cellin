@@ -13,11 +13,15 @@ from cellin.stores import (
     InMemoryGraphStore,
     InMemoryMemoryStore,
     InMemoryVectorIndex,
+    MongoDBGraphStore,
+    MongoDBMemoryStore,
     MySQLGraphStore,
     MySQLMemoryStore,
     PGVectorStore,
     PostgreSQLGraphStore,
     PostgreSQLMemoryStore,
+    RedisGraphStore,
+    RedisMemoryStore,
     SQLiteGraphStore,
     SQLiteMemoryStore,
     SQLiteVecStore,
@@ -141,6 +145,17 @@ def _build_sqlite_graph_store(
     return SQLiteGraphStore(database_path)
 
 
+def _resolve_connection_string(
+    config: StorageBackendConfig,
+    *,
+    backend_name: str,
+) -> str:
+    connection_string = config.database_path
+    if not connection_string:
+        raise StorageBackendError(f"{backend_name} backend requires a connection string")
+    return connection_string
+
+
 def _build_duckdb_memory_store(
     config: StorageBackendConfig,
     *,
@@ -171,10 +186,7 @@ def _build_postgresql_memory_store(
     workspace_root: Path,
 ) -> MemoryStore:
     del workspace_root
-    connection_string = config.database_path
-    if not connection_string:
-        raise StorageBackendError("postgresql backend requires a connection string")
-    return PostgreSQLMemoryStore(connection_string)
+    return PostgreSQLMemoryStore(_resolve_connection_string(config, backend_name="postgresql"))
 
 
 def _build_postgresql_graph_store(
@@ -183,10 +195,7 @@ def _build_postgresql_graph_store(
     workspace_root: Path,
 ) -> GraphStore:
     del workspace_root
-    connection_string = config.database_path
-    if not connection_string:
-        raise StorageBackendError("postgresql backend requires a connection string")
-    return PostgreSQLGraphStore(connection_string)
+    return PostgreSQLGraphStore(_resolve_connection_string(config, backend_name="postgresql"))
 
 
 def _build_mysql_memory_store(
@@ -195,10 +204,7 @@ def _build_mysql_memory_store(
     workspace_root: Path,
 ) -> MemoryStore:
     del workspace_root
-    connection_string = config.database_path
-    if not connection_string:
-        raise StorageBackendError("mysql backend requires a connection string")
-    return MySQLMemoryStore(connection_string)
+    return MySQLMemoryStore(_resolve_connection_string(config, backend_name="mysql"))
 
 
 def _build_mysql_graph_store(
@@ -207,10 +213,7 @@ def _build_mysql_graph_store(
     workspace_root: Path,
 ) -> GraphStore:
     del workspace_root
-    connection_string = config.database_path
-    if not connection_string:
-        raise StorageBackendError("mysql backend requires a connection string")
-    return MySQLGraphStore(connection_string)
+    return MySQLGraphStore(_resolve_connection_string(config, backend_name="mysql"))
 
 
 def _build_in_memory_memory_store(
@@ -229,6 +232,42 @@ def _build_in_memory_graph_store(
 ) -> GraphStore:
     del config, workspace_root
     return InMemoryGraphStore()
+
+
+def _build_mongodb_memory_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> MemoryStore:
+    del workspace_root
+    return MongoDBMemoryStore(_resolve_connection_string(config, backend_name="mongodb"))
+
+
+def _build_mongodb_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    del workspace_root
+    return MongoDBGraphStore(_resolve_connection_string(config, backend_name="mongodb"))
+
+
+def _build_redis_memory_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> MemoryStore:
+    del workspace_root
+    return RedisMemoryStore(_resolve_connection_string(config, backend_name="redis"))
+
+
+def _build_redis_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    del workspace_root
+    return RedisGraphStore(_resolve_connection_string(config, backend_name="redis"))
 
 
 def _build_vector_store(
@@ -270,6 +309,8 @@ _MEMORY_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
     "sqlite": _build_sqlite_memory_store,
     "postgresql": _build_postgresql_memory_store,
     "in_memory": _build_in_memory_memory_store,
+    "mongodb": _build_mongodb_memory_store,
+    "redis": _build_redis_memory_store,
 }
 
 
@@ -279,6 +320,8 @@ _GRAPH_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
     "sqlite": _build_sqlite_graph_store,
     "postgresql": _build_postgresql_graph_store,
     "in_memory": _build_in_memory_graph_store,
+    "mongodb": _build_mongodb_graph_store,
+    "redis": _build_redis_graph_store,
 }
 
 

@@ -99,6 +99,36 @@ Use `postgresql` and `mysql` with connection strings:
 }
 ```
 
+For document and cache-oriented presets, install optional dependencies as needed:
+
+```bash
+python3 -m pip install cellin[mongodb]
+python3 -m pip install cellin[redis]
+python3 -m pip install cellin[document-cache-backends]
+```
+
+Use `mongodb` when you want durable document storage for both memories and edges:
+
+```json
+{
+  "memory": { "backend": "mongodb", "database_path": "mongodb://user:pass@host:27017/cellin" },
+  "graph": { "backend": "mongodb", "database_path": "mongodb://user:pass@host:27017/cellin" }
+}
+```
+
+Use `redis` for low-latency cache-oriented deployments where operators control TTL or eviction:
+
+```json
+{
+  "memory": { "backend": "redis", "database_path": "redis://host:6379/0" },
+  "graph": { "backend": "redis", "database_path": "redis://host:6379/0" }
+}
+```
+
+MongoDB stores whole memory and edge documents and preserves archived entries as tombstones in the
+document payloads. Redis stores JSON payloads per key and also preserves archived entries as
+tombstones, filtering them from neighbor and edge listing reads rather than hard-deleting them.
+
 
 ## Primary surfaces
 
