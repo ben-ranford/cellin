@@ -13,18 +13,23 @@ from cellin.stores import (
     InMemoryGraphStore,
     InMemoryMemoryStore,
     InMemoryVectorIndex,
+    MilvusVectorStore,
     MongoDBGraphStore,
     MongoDBMemoryStore,
     MySQLGraphStore,
     MySQLMemoryStore,
     PGVectorStore,
+    PineconeVectorStore,
     PostgreSQLGraphStore,
     PostgreSQLMemoryStore,
+    QdrantVectorStore,
     RedisGraphStore,
     RedisMemoryStore,
+    RedisVectorStore,
     SQLiteGraphStore,
     SQLiteMemoryStore,
     SQLiteVecStore,
+    WeaviateVectorStore,
 )
 
 StorageRole = Literal["graph", "memory", "representation", "vector"]
@@ -303,6 +308,51 @@ def _build_pgvector_store(
     return PGVectorStore(connection_string)
 
 
+def _build_pinecone_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> VectorStore:
+    del workspace_root
+    return PineconeVectorStore(_resolve_connection_string(config, backend_name="pinecone"))
+
+
+def _build_qdrant_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> VectorStore:
+    del workspace_root
+    return QdrantVectorStore(_resolve_connection_string(config, backend_name="qdrant"))
+
+
+def _build_weaviate_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> VectorStore:
+    del workspace_root
+    return WeaviateVectorStore(_resolve_connection_string(config, backend_name="weaviate"))
+
+
+def _build_milvus_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> VectorStore:
+    del workspace_root
+    return MilvusVectorStore(_resolve_connection_string(config, backend_name="milvus"))
+
+
+def _build_redis_vector_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> VectorStore:
+    del workspace_root
+    return RedisVectorStore(_resolve_connection_string(config, backend_name="redis_vector"))
+
+
 _MEMORY_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
     "duckdb": _build_duckdb_memory_store,
     "mysql": _build_mysql_memory_store,
@@ -329,6 +379,11 @@ _VECTOR_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
     "in_memory_vector_index": _build_vector_store,
     "sqlite_vec": _build_sqlite_vec_store,
     "pgvector": _build_pgvector_store,
+    "pinecone": _build_pinecone_store,
+    "qdrant": _build_qdrant_store,
+    "weaviate": _build_weaviate_store,
+    "milvus": _build_milvus_store,
+    "redis_vector": _build_redis_vector_store,
 }
 
 
