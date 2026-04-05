@@ -11,8 +11,10 @@ from cellin.stores import (
     InMemoryGraphStore,
     InMemoryMemoryStore,
     InMemoryVectorIndex,
+    PGVectorStore,
     SQLiteGraphStore,
     SQLiteMemoryStore,
+    SQLiteVecStore,
 )
 
 StorageRole = Literal["graph", "memory", "representation", "vector"]
@@ -98,7 +100,7 @@ __all__ = [
 
 def _resolve_database_path(path_value: str | None, *, workspace_root: Path) -> str:
     if path_value is None:
-        raise StorageBackendError("SQLite backend requires a `database_path` value")
+        raise StorageBackendError("`database_path` is required for this backend")
 
     configured_path = Path(path_value)
     resolved_path = (
@@ -114,7 +116,10 @@ def _build_sqlite_memory_store(
     *,
     workspace_root: Path,
 ) -> MemoryStore:
-    database_path = _resolve_database_path(config.database_path, workspace_root=workspace_root)
+    database_path = _resolve_database_path(
+        config.database_path,
+        workspace_root=workspace_root,
+    )
     return SQLiteMemoryStore(database_path)
 
 
@@ -123,7 +128,10 @@ def _build_sqlite_graph_store(
     *,
     workspace_root: Path,
 ) -> GraphStore:
-    database_path = _resolve_database_path(config.database_path, workspace_root=workspace_root)
+    database_path = _resolve_database_path(
+        config.database_path,
+        workspace_root=workspace_root,
+    )
     return SQLiteGraphStore(database_path)
 
 
@@ -150,10 +158,32 @@ def _build_vector_store(
     *,
     workspace_root: Path,
 ) -> VectorStore:
-    # Vector stores are in-memory only for now, so no backend-local workspace
-    # resolution is required. Keep the signature consistent with other builders.
     del config, workspace_root
     return InMemoryVectorIndex()
+
+
+def _build_sqlite_vec_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> VectorStore:
+    database_path = _resolve_database_path(
+        config.database_path,
+        workspace_root=workspace_root,
+    )
+    return SQLiteVecStore(database_path)
+
+
+def _build_pgvector_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> VectorStore:
+    del workspace_root
+    connection_string = config.database_path
+    if connection_string is None:
+        raise StorageBackendError("pgvector backend requires a connection string")
+    return PGVectorStore(connection_string)
 
 
 _MEMORY_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
@@ -170,6 +200,8 @@ _GRAPH_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
 
 _VECTOR_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
     "in_memory_vector_index": _build_vector_store,
+    "sqlite_vec": _build_sqlite_vec_store,
+    "pgvector": _build_pgvector_store,
 }
 
 

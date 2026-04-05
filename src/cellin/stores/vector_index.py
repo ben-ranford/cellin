@@ -2,30 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
-import math
-import re
-
 from cellin.core import VectorMatch
-
-TOKEN_RE = re.compile(r"[a-z0-9]+")
-VECTOR_SIZE = 12
-
-
-def _tokenize(text: str) -> list[str]:
-    return TOKEN_RE.findall(text.lower())
-
-
-def _vectorize(text: str) -> tuple[float, ...]:
-    buckets = [0.0] * VECTOR_SIZE
-    for token in _tokenize(text):
-        digest = hashlib.sha256(token.encode("utf-8")).digest()
-        bucket_index = int.from_bytes(digest[:4], byteorder="big") % VECTOR_SIZE
-        buckets[bucket_index] += 1.0
-    norm = math.sqrt(sum(value * value for value in buckets))
-    if norm == 0:
-        return tuple(buckets)
-    return tuple(value / norm for value in buckets)
+from cellin.stores.vector_utils import cosine_similarity, vectorize
 
 
 class InMemoryVectorIndex:
@@ -35,21 +13,21 @@ class InMemoryVectorIndex:
         self._vectors: dict[str, tuple[float, ...]] = {}
 
     def upsert(self, memory_id: str, text: str) -> None:
-        self._vectors[memory_id] = _vectorize(text)
+        self._vectors[memory_id] = vectorize(text)
 
     def search(self, query: str, *, limit: int = 5) -> tuple[VectorMatch, ...]:
-        query_vector = _vectorize(query)
+        if limit <= 0:
+            return ()
+
+        query_vector = vectorize(query)
         results = [
             VectorMatch(
                 memory_id=memory_id,
-                score=round(
-                    sum(a * b for a, b in zip(query_vector, vector, strict=True)),
-                    6,
-                ),
+                score=round(cosine_similarity(query_vector, vector), 6),
             )
             for memory_id, vector in self._vectors.items()
         ]
-        ordered = sorted(results, key=lambda result: result.score, reverse=True)
+        ordered = sorted(results, key=lambda result: (-result.score, result.memory_id))
         return tuple(ordered[:limit])
 
 
