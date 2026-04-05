@@ -70,3 +70,9 @@ def test_build_preview_version_uses_numeric_build_identifier() -> None:
 def test_build_preview_version_rejects_non_numeric_build_identifier() -> None:
     with pytest.raises(ValueError, match="numeric"):
         release_versioning.build_preview_version("0.2.1", "run-42")
+
+
+def test_select_latest_stable_tag_ignores_preview_and_candidate_tags() -> None:
+    tags = ["v0.2.1.dev2399631184001", "v0.2.1rc1", "v0.2.0", "v0.1.1"]
+
+    assert release_versioning.select_latest_stable_tag(tags) == "v0.2.0"
