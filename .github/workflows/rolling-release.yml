@@ -1,22 +1,26 @@
 name: rolling-release
 
 "on":
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       version:
-        description: "PEP 440 prerelease version without the leading v, for example 0.2.0rc1"
-        required: true
+        description: "Manual release-candidate version without the leading v, for example 0.2.1rc1"
+        required: false
       target_ref:
-        description: "Git ref to publish from when cutting a prerelease"
+        description: "Git ref to publish from when cutting a manual release candidate"
         required: false
         default: "main"
 
 concurrency:
-  group: rolling-release-${{ inputs.version }}
+  group: rolling-release-${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
   build-prerelease:
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,7 +31,7 @@ jobs:
       - name: Checkout target ref
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.target_ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_ref || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -40,17 +44,30 @@ jobs:
       - name: Sync dependencies
         run: python -m uv sync --dev --frozen
 
-      - name: Validate prerelease version
+      - name: Resolve package version
         id: version
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
-          python -m uv run python scripts/release/verify_version.py \
-            --tag "v${RELEASE_VERSION}" \
-            --expect-version "${RELEASE_VERSION}" \
-            --release-kind prerelease
-          echo "package_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            resolved_version="$(python -m uv run python scripts/release/resolve_preview_version.py \
+              --run-id "${GITHUB_RUN_ID}" \
+              --run-attempt "${GITHUB_RUN_ATTEMPT}")"
+            python -m uv run python scripts/release/set_version.py --version "${resolved_version}"
+            python -m uv run python scripts/release/verify_version.py \
+              --expect-version "${resolved_version}" \
+              --release-kind preview
+          else
+            resolved_version="${{ inputs.version }}"
+            if [ -z "${resolved_version}" ]; then
+              echo "workflow_dispatch requires a release-candidate version input" >&2
+              exit 1
+            fi
+            python -m uv run python scripts/release/verify_version.py \
+              --tag "v${resolved_version}" \
+              --expect-version "${resolved_version}" \
+              --release-kind prerelease
+          fi
+          echo "package_version=${resolved_version}" >> "$GITHUB_OUTPUT"
 
       - name: Run release smoke
         run: make release-smoke
@@ -62,7 +79,7 @@ jobs:
       - name: Upload Python distributions
         uses: actions/upload-artifact@v7
         with:
-          name: python-dist-v${{ inputs.version }}
+          name: python-dist-v${{ steps.version.outputs.package_version }}
           path: |
             dist/*.tar.gz
             dist/*.whl
@@ -70,7 +87,7 @@ jobs:
       - name: Upload rolling release bundle
         uses: actions/upload-artifact@v7
         with:
-          name: rolling-release-v${{ inputs.version }}
+          name: rolling-release-v${{ steps.version.outputs.package_version }}
           path: dist/*
 
   publish-github-prerelease:
@@ -82,16 +99,22 @@ jobs:
       - name: Download rolling release bundle
         uses: actions/download-artifact@v8
         with:
-          name: rolling-release-v${{ inputs.version }}
+          name: rolling-release-v${{ needs.build-prerelease.outputs.package_version }}
           path: dist
 
       - name: Publish rolling prerelease
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v${{ inputs.version }}
-          TARGET_REF: ${{ inputs.target_ref }}
+          REPO: ${{ github.repository }}
+          TAG: v${{ needs.build-prerelease.outputs.package_version }}
+          TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.target_ref || github.sha }}
         shell: bash
-        run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes --target "$TARGET_REF" --prerelease
+        run: |
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$REPO" --clobber
+          else
+            gh release create "$TAG" dist/* --repo "$REPO" --title "$TAG" --generate-notes --target "$TARGET_REF" --prerelease
+          fi
 
   publish-pypi-prerelease:
     needs: build-prerelease
@@ -105,7 +128,7 @@ jobs:
       - name: Download Python distributions
         uses: actions/download-artifact@v8
         with:
-          name: python-dist-v${{ inputs.version }}
+          name: python-dist-v${{ needs.build-prerelease.outputs.package_version }}
           path: dist
 
       - name: Publish prerelease distributions to PyPI

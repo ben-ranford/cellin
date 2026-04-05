@@ -36,8 +36,9 @@ Generated artifacts such as `eval-results/`, `dist/`, and `site/` should not be 
 3. Add or update tests, eval fixtures, docs, and starter examples when behavior changes.
 4. Use Conventional Commits for commit messages and PR titles. Stable release automation derives semver bumps from `fix:`, `feat:`, and `BREAKING CHANGE` markers.
 5. When squashing or merging, keep the final commit title in Conventional Commit form. `release-please` builds release PR notes from merged commit titles on `main`, not from GitHub labels, and non-conventional titles may be dropped from the generated changelog.
-6. Run `make release-smoke` before pushing.
-7. Open a draft PR until the stream is ready for review.
+6. Every push to `main` publishes a rolling preview build from `.github/workflows/rolling-release.yml`. If a merge should not create a preview version, it should not land on `main`.
+7. Run `make release-smoke` before pushing.
+8. Open a draft PR until the stream is ready for review.
 
 ## Quality Gates
 
@@ -65,10 +66,12 @@ python3 -m uv run lefthook run pre-commit
 ## Release Workflow
 
 - Stable releases are initiated by `release-please` from merged conventional commits on `main`.
+- Pushes to `main` automatically publish `.devN` preview builds from the next inferred stable version.
 - Release PRs carry the version bump, changelog update, and tag metadata for the next stable cut.
 - Release PR summaries are grouped from parsed Conventional Commit types such as `feat`, `fix`, `docs`, `refactor`, and `perf`. Issue labels like `bug`, `retrieval`, or `release-candidate` do not drive those sections.
-- Prerelease versions use PEP 440 syntax such as `0.2.0rc1`.
-- Manual prereleases are created through the GitHub Actions `rolling-release` workflow.
+- Preview versions use PEP 440 development syntax such as `0.2.1.dev123456701`.
+- Release-candidate versions use PEP 440 syntax such as `0.2.1rc1`.
+- Manual release candidates are created through the GitHub Actions `rolling-release` workflow.
 - Run `make version-check` when you change the package version or prepare a release branch.
 - Run `make release-smoke` before you cut or approve a release-related change.
 - Use `RELEASING.md` for the stable release PR flow, trusted publishing setup, token requirements, and artifact expectations.

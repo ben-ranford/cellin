@@ -4,24 +4,15 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 import tomllib
 from pathlib import Path
 
-VERSION_PATTERN = re.compile(
-    r'^__version__\s*=\s*"(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)"(?:\s*#.*)?\s*$',
-    re.MULTILINE,
-)
-STABLE_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
-PRERELEASE_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:a|b|rc)\d+$")
+from _versioning import load_assigned_version, validate_release_kind
 
 
 def load_version(version_path: Path) -> str:
-    match = VERSION_PATTERN.search(version_path.read_text(encoding="utf-8"))
-    if match is None:
-        raise ValueError(f"Unable to locate __version__ in {version_path}")
-    return match.group("version")
+    return load_assigned_version(version_path.read_text(encoding="utf-8"))
 
 
 def validate_pyproject(pyproject_path: Path, version_path: str) -> None:
@@ -38,24 +29,15 @@ def validate_pyproject(pyproject_path: Path, version_path: str) -> None:
         )
 
 
-def validate_release_kind(version: str, release_kind: str) -> None:
-    if release_kind == "stable" and STABLE_PATTERN.fullmatch(version) is None:
-        raise ValueError(f"Stable releases must use X.Y.Z, found {version!r}")
-    if release_kind == "prerelease" and PRERELEASE_PATTERN.fullmatch(version) is None:
-        raise ValueError(
-            "Prereleases must use PEP 440 prerelease versions like X.Y.ZrcN, X.Y.ZbN, or X.Y.ZaN"
-        )
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate the Cellin package version surface.")
     parser.add_argument("--tag", help="Git tag to compare against, for example v0.1.0")
     parser.add_argument("--expect-version", help="Expected package version")
     parser.add_argument(
         "--release-kind",
-        choices=("any", "stable", "prerelease"),
+        choices=("any", "stable", "prerelease", "preview"),
         default="any",
-        help="Validate stable or prerelease policy",
+        help="Validate stable, prerelease, or preview release policy",
     )
     parser.add_argument(
         "--version-path",
