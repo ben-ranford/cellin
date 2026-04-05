@@ -17,10 +17,14 @@ from cellin.runtime.storage import (
 from cellin.stores import (
     DuckDBGraphStore,
     DuckDBMemoryStore,
+    MongoDBGraphStore,
+    MongoDBMemoryStore,
     MySQLGraphStore,
     MySQLMemoryStore,
     PostgreSQLGraphStore,
     PostgreSQLMemoryStore,
+    RedisGraphStore,
+    RedisMemoryStore,
     SQLiteMemoryStore,
     SQLiteVecStore,
 )
@@ -285,6 +289,96 @@ def test_build_storage_bundle_rejects_duckdb_without_database_path(tmp_path: Pat
         representation=StorageBackendConfig("in_memory_vector_index"),
     )
     with pytest.raises(StorageBackendError, match="database_path"):
+        build_storage_bundle(config, workspace_root=tmp_path)
+
+
+def test_build_storage_bundle_resolves_mongodb_backends(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    shared_backend = object()
+
+    class _FakeMongoMemoryStore(MongoDBMemoryStore):
+        def __init__(self, connection_string: str) -> None:
+            self._connection_string = connection_string
+            self._backend = shared_backend
+
+    class _FakeMongoGraphStore(MongoDBGraphStore):
+        def __init__(self, connection_string: str) -> None:
+            self._connection_string = connection_string
+            self._backend = shared_backend
+
+    monkeypatch.setattr("cellin.runtime.storage.MongoDBMemoryStore", _FakeMongoMemoryStore)
+    monkeypatch.setattr("cellin.runtime.storage.MongoDBGraphStore", _FakeMongoGraphStore)
+    config = StorageConfig(
+        memory=StorageBackendConfig("mongodb", "mongodb://localhost:27017/cellin"),
+        graph=StorageBackendConfig("mongodb", "mongodb://localhost:27017/cellin"),
+        vector=StorageBackendConfig("in_memory_vector_index"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    bundle = build_storage_bundle(config, workspace_root=tmp_path)
+
+    assert isinstance(bundle.memory_store, _FakeMongoMemoryStore)
+    assert isinstance(bundle.graph_store, _FakeMongoGraphStore)
+    assert bundle.memory_store._connection_string == "mongodb://localhost:27017/cellin"
+    assert bundle.graph_store.shares_memory_store(bundle.memory_store)
+
+
+def test_build_storage_bundle_rejects_mongodb_without_connection_string(tmp_path: Path) -> None:
+    config = StorageConfig(
+        memory=StorageBackendConfig("mongodb"),
+        graph=StorageBackendConfig("mongodb"),
+        vector=StorageBackendConfig("in_memory_vector_index"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    with pytest.raises(StorageBackendError, match="mongodb backend requires a connection string"):
+        build_storage_bundle(config, workspace_root=tmp_path)
+
+
+def test_build_storage_bundle_resolves_redis_backends(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    shared_backend = object()
+
+    class _FakeRedisMemoryStore(RedisMemoryStore):
+        def __init__(self, connection_string: str) -> None:
+            self._connection_string = connection_string
+            self._backend = shared_backend
+
+    class _FakeRedisGraphStore(RedisGraphStore):
+        def __init__(self, connection_string: str) -> None:
+            self._connection_string = connection_string
+            self._backend = shared_backend
+
+    monkeypatch.setattr("cellin.runtime.storage.RedisMemoryStore", _FakeRedisMemoryStore)
+    monkeypatch.setattr("cellin.runtime.storage.RedisGraphStore", _FakeRedisGraphStore)
+    config = StorageConfig(
+        memory=StorageBackendConfig("redis", "redis://localhost:6379/0"),
+        graph=StorageBackendConfig("redis", "redis://localhost:6379/0"),
+        vector=StorageBackendConfig("in_memory_vector_index"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    bundle = build_storage_bundle(config, workspace_root=tmp_path)
+
+    assert isinstance(bundle.memory_store, _FakeRedisMemoryStore)
+    assert isinstance(bundle.graph_store, _FakeRedisGraphStore)
+    assert bundle.memory_store._connection_string == "redis://localhost:6379/0"
+    assert bundle.graph_store.shares_memory_store(bundle.memory_store)
+
+
+def test_build_storage_bundle_rejects_redis_without_connection_string(tmp_path: Path) -> None:
+    config = StorageConfig(
+        memory=StorageBackendConfig("redis"),
+        graph=StorageBackendConfig("redis"),
+        vector=StorageBackendConfig("in_memory_vector_index"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    with pytest.raises(StorageBackendError, match="redis backend requires a connection string"):
         build_storage_bundle(config, workspace_root=tmp_path)
 
 

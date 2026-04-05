@@ -47,8 +47,11 @@ dev = [
 
 [project.optional-dependencies]
 duckdb = ["duckdb"]
+document-cache-backends = ["pymongo", "redis"]
+mongodb = ["pymongo"]
 mysql = ["mysql-connector-python"]
 postgresql = ["psycopg"]
+redis = ["redis"]
 sql-backends = ["duckdb", "psycopg", "mysql-connector-python"]
 
 [tool.hatch.build.targets.wheel]
