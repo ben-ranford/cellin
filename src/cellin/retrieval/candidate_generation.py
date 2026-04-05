@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from cellin.core import GraphStore, MemoryAtom, MemoryEdge, MemoryStore
+from cellin.core import GraphStore, MemoryAtom, MemoryEdge, MemoryStore, VectorStore
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -34,23 +34,49 @@ def _annotate_distance(memory: MemoryAtom, distance: int) -> MemoryAtom:
     )
 
 
+def _annotate_vector_score(memory: MemoryAtom, score: float) -> MemoryAtom:
+    return replace(
+        memory,
+        metadata={**memory.metadata, "vector_score": round(max(score, 0.0), 6)},
+    )
+
+
+def _ordered_unique(memories: list[MemoryAtom]) -> list[MemoryAtom]:
+    ordered: list[MemoryAtom] = []
+    seen: set[str] = set()
+    for memory in memories:
+        if memory.memory_id in seen:
+            continue
+        seen.add(memory.memory_id)
+        ordered.append(memory)
+    return ordered
+
+
 @dataclass(slots=True)
 class RetrievalCandidateGenerator:
-    """Generates retrieval candidates from lexical seeds plus graph expansion."""
+    """Generates retrieval candidates from lexical, vector, and graph signals."""
 
     memory_store: MemoryStore
     graph_store: GraphStore | None = None
+    vector_store: VectorStore | None = None
     lexical_limit: int = 4
+    vector_limit: int = 4
 
     def collect(self, query: str, *, limit: int) -> tuple[MemoryAtom, ...]:
         memories = self._active_memories()
-        if not memories:
+        if not memories or limit <= 0:
             return ()
 
         ranked_by_seed = self._rank_by_lexical_seed(query, memories)
-        seed_candidates = self._seed_candidates(query, ranked_by_seed, limit)
+        ranked_by_vector = self._rank_by_vector_seed(query, memories)
+        seed_candidates = self._seed_candidates(
+            query,
+            ranked_by_seed,
+            ranked_by_vector,
+            limit,
+        )
         candidates = self._candidate_index(seed_candidates)
-        self._expand_graph_neighbors(seed_candidates, candidates, limit)
+        self._expand_graph_neighbors(seed_candidates, candidates)
         return self._assemble_ordered_candidates(ranked_by_seed, candidates, limit)
 
     def _active_memories(self) -> tuple[MemoryAtom, ...]:
@@ -71,15 +97,25 @@ class RetrievalCandidateGenerator:
         self,
         query: str,
         ranked_by_seed: list[MemoryAtom],
+        ranked_by_vector: tuple[MemoryAtom, ...],
         limit: int,
     ) -> list[MemoryAtom]:
-        seeded = [
+        if limit <= 0:
+            return []
+
+        lexical_seeded = [
             _annotate_distance(memory, 0)
             for memory in ranked_by_seed[: self.lexical_limit]
             if _lexical_seed_score(query, memory) > 0.0
         ]
-        if seeded:
-            return seeded
+        vector_seeded = [_annotate_distance(memory, 0) for memory in ranked_by_vector]
+        if lexical_seeded:
+            merged = _ordered_unique(list(lexical_seeded) + vector_seeded)
+            return merged[: max(limit, self.vector_limit, self.lexical_limit)]
+
+        if vector_seeded:
+            return vector_seeded[: max(limit, self.vector_limit)]
+
         return self._fallback_seed_candidates(ranked_by_seed, limit)
 
     def _fallback_seed_candidates(
@@ -92,14 +128,52 @@ class RetrievalCandidateGenerator:
             for memory in ranked_by_seed[: min(limit, self.lexical_limit)]
         ]
 
+    def _rank_by_vector_seed(
+        self,
+        query: str,
+        memories: tuple[MemoryAtom, ...],
+    ) -> tuple[MemoryAtom, ...]:
+        if self.vector_store is None:
+            return ()
+
+        active = {memory.memory_id: memory for memory in memories}
+        matches = self.vector_store.search(
+            query,
+            limit=max(self.vector_limit, 1),
+        )
+        vector_candidates: list[MemoryAtom] = []
+        for match in matches:
+            memory = active.get(match.memory_id)
+            if memory is None:
+                continue
+            vector_candidates.append(_annotate_vector_score(memory, match.score))
+
+        ranked_candidates = sorted(
+            vector_candidates,
+            key=lambda item: (item.metadata["vector_score"], item.memory_id),
+            reverse=True,
+        )
+        return tuple(_ordered_unique(ranked_candidates))
+
     def _candidate_index(self, seed_candidates: list[MemoryAtom]) -> dict[str, MemoryAtom]:
-        return {memory.memory_id: memory for memory in seed_candidates}
+        merged: dict[str, MemoryAtom] = {}
+        for memory in seed_candidates:
+            existing = merged.get(memory.memory_id)
+            if existing is None:
+                merged[memory.memory_id] = memory
+                continue
+
+            merged[memory.memory_id] = replace(
+                existing,
+                metadata={**existing.metadata, **memory.metadata},
+            )
+
+        return merged
 
     def _expand_graph_neighbors(
         self,
         seed_candidates: list[MemoryAtom],
         candidates: dict[str, MemoryAtom],
-        limit: int,
     ) -> None:
         if self.graph_store is None:
             return
@@ -109,10 +183,7 @@ class RetrievalCandidateGenerator:
                 neighbor = self._resolve_neighbor(seed.memory_id, edge, candidates)
                 if neighbor is None:
                     continue
-
                 candidates[neighbor.memory_id] = _annotate_distance(neighbor, 1)
-                if len(candidates) >= limit:
-                    break
 
     def _resolve_neighbor(
         self,
@@ -143,12 +214,25 @@ class RetrievalCandidateGenerator:
         candidates: dict[str, MemoryAtom],
         limit: int,
     ) -> tuple[MemoryAtom, ...]:
-        ordered_ids = [
-            memory.memory_id for memory in ranked_by_seed if memory.memory_id in candidates
-        ]
-        ordered = tuple(candidates[memory_id] for memory_id in ordered_ids[:limit])
-        if len(ordered) >= limit:
-            return ordered
+        ordered: list[MemoryAtom] = []
+        selected_ids: set[str] = set()
 
-        missing = [memory for memory in ranked_by_seed if memory.memory_id not in candidates]
-        return ordered + tuple(missing[: max(0, limit - len(ordered))])
+        for memory in ranked_by_seed:
+            memory_id = memory.memory_id
+            if memory_id in selected_ids:
+                continue
+            ordered.append(candidates.get(memory_id, memory))
+            selected_ids.add(memory_id)
+            if len(ordered) >= limit:
+                return tuple(ordered[:limit])
+
+        for memory in candidates.values():
+            memory_id = memory.memory_id
+            if memory_id in selected_ids:
+                continue
+            ordered.append(memory)
+            selected_ids.add(memory_id)
+            if len(ordered) >= limit:
+                break
+
+        return tuple(ordered[:limit])

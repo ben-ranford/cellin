@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import create_autospec
+
+import pytest
 
 from cellin.core import (
     DecayState,
@@ -16,6 +19,8 @@ from cellin.core import (
     Modality,
     Provenance,
     RetrievalStats,
+    VectorMatch,
+    VectorStore,
 )
 from cellin.retrieval import RetrievalCandidateGenerator
 
@@ -73,6 +78,25 @@ def _graph_store(
         edge for edge in edges if edge.source_id == memory_id or edge.target_id == memory_id
     )
     return graph
+
+
+class _FakeVectorStore(VectorStore):
+    def __init__(self, matches: tuple[tuple[str, float], ...]) -> None:
+        self._matches = tuple(matches)
+
+    def upsert(self, memory_id: str, text: str) -> None:
+        pass
+
+    def search(self, query: str, *, limit: int = 5) -> tuple[VectorMatch, ...]:
+        del query
+        ordered = sorted(
+            self._matches,
+            key=lambda item: (-item[1], item[0]),
+        )
+        return tuple(
+            VectorMatch(memory_id=memory_id, score=round(score, 6))
+            for memory_id, score in ordered[: max(0, limit)]
+        )
 
 
 def test_collect_filters_archived_memories_and_archived_graph_neighbors() -> None:
@@ -159,3 +183,131 @@ def test_collect_returns_empty_when_limit_is_zero() -> None:
     )
 
     assert generator.collect("atlas retrieval", limit=0) == ()
+
+
+def test_collect_prefers_hybrid_lexical_and_vector_seeding_with_graph_expansion() -> None:
+    memories = (
+        _memory("lexical", "Atlas architecture and retrieval"),
+        _memory("vector-primary", "Unrelated vector-only signal"),
+        _memory("graph-neighbor", "Graph neighbor to vector primary"),
+        _memory("inactive", "no relevance"),
+    )
+    edges = (_edge("vector-to-graph", "vector-primary", "graph-neighbor"),)
+    generator = RetrievalCandidateGenerator(
+        memory_store=_memory_store(memories),
+        graph_store=_graph_store(memories, edges),
+        vector_store=_FakeVectorStore(
+            (
+                ("vector-primary", 0.9),
+                ("inactive", 0.4),
+            )
+        ),
+    )
+
+    collected = generator.collect("Atlas", limit=3)
+
+    assert tuple(memory.memory_id for memory in collected) == (
+        "lexical",
+        "vector-primary",
+        "graph-neighbor",
+    )
+    assert collected[0].metadata["graph_distance"] == 0
+    assert collected[1].metadata["graph_distance"] == 0
+    assert collected[1].metadata["vector_score"] == pytest.approx(0.9)
+    assert collected[2].metadata["graph_distance"] == 1
+
+
+def test_collect_uses_vector_candidates_when_lexical_candidates_are_absent() -> None:
+    memories = (
+        _memory("seed-vector", "gamma delta"),
+        _memory("seed-lex", "alpha beta"),
+        _memory("vector-neighbor", "epsilon"),
+    )
+    edges = (_edge("vector-neighbor-edge", "seed-vector", "vector-neighbor"),)
+    generator = RetrievalCandidateGenerator(
+        memory_store=_memory_store(memories),
+        graph_store=_graph_store(memories, edges),
+        vector_store=_FakeVectorStore(
+            (
+                ("seed-vector", 0.7),
+                ("seed-lex", 0.4),
+            )
+        ),
+        lexical_limit=1,
+    )
+
+    collected = generator.collect("atlas retrieval query", limit=3)
+
+    assert tuple(memory.memory_id for memory in collected) == (
+        "seed-vector",
+        "seed-lex",
+        "vector-neighbor",
+    )
+    assert all("vector_score" in memory.metadata for memory in collected[:2])
+    assert collected[0].metadata["vector_score"] == pytest.approx(0.7)
+
+
+def test_seed_candidates_returns_empty_for_non_positive_limit() -> None:
+    memories = (_memory("seed", "Atlas retrieval graph"),)
+    generator = RetrievalCandidateGenerator(
+        memory_store=_memory_store(memories),
+        graph_store=None,
+    )
+
+    assert generator._seed_candidates("Atlas retrieval", list(memories), (), 0) == []
+
+
+def test_rank_by_vector_seed_skips_matches_not_present_in_active_memories() -> None:
+    memories = (_memory("known", "Atlas retrieval graph"),)
+    generator = RetrievalCandidateGenerator(
+        memory_store=_memory_store(memories),
+        graph_store=None,
+        vector_store=_FakeVectorStore((("missing", 0.9), ("known", 0.6))),
+    )
+
+    ranked = generator._rank_by_vector_seed("Atlas retrieval", memories)
+
+    assert tuple(memory.memory_id for memory in ranked) == ("known",)
+    assert ranked[0].metadata["vector_score"] == pytest.approx(0.6)
+
+
+def test_candidate_index_merges_duplicate_seed_metadata() -> None:
+    base = _memory("seed", "Atlas retrieval graph")
+    generator = RetrievalCandidateGenerator(
+        memory_store=_memory_store((base,)),
+        graph_store=None,
+    )
+
+    merged = generator._candidate_index(
+        [
+            replace(base, metadata={"graph_distance": 0}),
+            replace(base, metadata={"vector_score": 0.84}),
+        ]
+    )
+
+    assert merged["seed"].metadata == {"graph_distance": 0, "vector_score": 0.84}
+
+
+def test_collect_includes_graph_neighbors_loaded_from_memory_store_lookup() -> None:
+    seed = _memory("seed", "Atlas retrieval graph")
+    duplicate_seed = replace(seed, metadata={"duplicate": True})
+    neighbor = _memory("graph-neighbor", "Neighbor resolved from the memory store")
+    store = create_autospec(MemoryStore, instance=True)
+    store.list.return_value = (seed, duplicate_seed)
+    store.get.side_effect = {"seed": seed, "graph-neighbor": neighbor}.get
+
+    graph = create_autospec(GraphStore, instance=True)
+    graph.get_memory.return_value = None
+    graph.neighbors.side_effect = lambda memory_id: (
+        (_edge("seed-to-neighbor", "seed", "graph-neighbor"),) if memory_id == "seed" else ()
+    )
+
+    generator = RetrievalCandidateGenerator(
+        memory_store=store,
+        graph_store=graph,
+    )
+
+    collected = generator.collect("Atlas retrieval", limit=2)
+
+    assert tuple(memory.memory_id for memory in collected) == ("seed", "graph-neighbor")
+    assert collected[1].metadata["graph_distance"] == 1

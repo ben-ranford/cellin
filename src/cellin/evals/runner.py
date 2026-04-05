@@ -16,6 +16,7 @@ from cellin.core import (
     MemoryStore,
     Provenance,
     ScoredMemory,
+    VectorStore,
 )
 from cellin.core.models import JSONValue
 from cellin.dreaming import (
@@ -147,11 +148,18 @@ def _delta(metrics: dict[str, float], baseline: dict[str, float]) -> dict[str, f
 
 
 def _retriever(
-    memory_store: MemoryStore, graph_store: GraphStore, profile_name: str
+    memory_store: MemoryStore,
+    graph_store: GraphStore,
+    profile_name: str,
+    vector_store: VectorStore | None = None,
 ) -> WeightedRetriever:
     profile = get_weight_profile(profile_name)
     return WeightedRetriever(
-        candidate_generator=RetrievalCandidateGenerator(memory_store, graph_store),
+        candidate_generator=RetrievalCandidateGenerator(
+            memory_store,
+            graph_store,
+            vector_store=vector_store,
+        ),
         ranker=WeightedRanker(
             profile=profile,
             now_provider=lambda: datetime(2026, 4, 4, tzinfo=UTC),

@@ -66,7 +66,11 @@ def _retriever(config_path: Path) -> WeightedRetriever:
     workspace, bundle = _load_bundle(config_path)
     profile = get_weight_profile(workspace.profile_name)
     return WeightedRetriever(
-        candidate_generator=RetrievalCandidateGenerator(bundle.memory_store, bundle.graph_store),
+        candidate_generator=RetrievalCandidateGenerator(
+            bundle.memory_store,
+            bundle.graph_store,
+            vector_store=bundle.vector_store,
+        ),
         ranker=WeightedRanker(profile=profile),
         profile=profile,
     )

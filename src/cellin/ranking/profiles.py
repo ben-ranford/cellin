@@ -11,6 +11,7 @@ class WeightProfile:
 
     name: str
     semantic_similarity: float
+    vector_similarity: float
     graph_proximity: float
     recency: float
     salience: float
@@ -25,7 +26,8 @@ class WeightProfile:
 PROFILES: dict[str, WeightProfile] = {
     "balanced": WeightProfile(
         name="balanced",
-        semantic_similarity=0.28,
+        semantic_similarity=0.24,
+        vector_similarity=0.12,
         graph_proximity=0.18,
         recency=0.12,
         salience=0.18,
@@ -35,7 +37,8 @@ PROFILES: dict[str, WeightProfile] = {
     ),
     "recency_sensitive": WeightProfile(
         name="recency_sensitive",
-        semantic_similarity=0.22,
+        semantic_similarity=0.18,
+        vector_similarity=0.12,
         graph_proximity=0.10,
         recency=0.30,
         salience=0.14,
@@ -46,7 +49,8 @@ PROFILES: dict[str, WeightProfile] = {
     ),
     "concept_sensitive": WeightProfile(
         name="concept_sensitive",
-        semantic_similarity=0.30,
+        semantic_similarity=0.24,
+        vector_similarity=0.12,
         graph_proximity=0.24,
         recency=0.06,
         salience=0.16,

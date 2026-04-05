@@ -54,6 +54,14 @@ def _modality_match(memory: MemoryAtom) -> float:
     return 0.4
 
 
+def _vector_similarity(memory: MemoryAtom) -> float:
+    raw_score = memory.metadata.get("vector_score")
+    if not isinstance(raw_score, int | float) or isinstance(raw_score, bool):
+        return 0.0
+
+    return max(0.0, min(1.0, float(raw_score)))
+
+
 @dataclass(slots=True)
 class WeightedRanker:
     """Explainable weighted ranking over memory atoms."""
@@ -106,9 +114,15 @@ class WeightedRanker:
                     value=_modality_match(memory),
                     rationale="Prefer text-like modalities for text queries.",
                 ),
+                FactorScore(
+                    name="vector_similarity",
+                    value=_vector_similarity(memory),
+                    rationale="Vector-space similarity from the hybrid retrieval pass.",
+                ),
             )
             total = (
                 self.profile.semantic_similarity * factors[0].value
+                + self.profile.vector_similarity * factors[7].value
                 + self.profile.graph_proximity * factors[1].value
                 + self.profile.recency * factors[2].value
                 + self.profile.salience * factors[3].value

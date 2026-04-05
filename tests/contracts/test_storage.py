@@ -14,7 +14,7 @@ from cellin.runtime.storage import (
     StorageConfig,
     build_storage_bundle,
 )
-from cellin.stores import SQLiteMemoryStore
+from cellin.stores import SQLiteMemoryStore, SQLiteVecStore
 
 
 def test_load_workspace_migrates_legacy_database_path(tmp_path: Path) -> None:
@@ -76,6 +76,68 @@ def test_build_storage_bundle_rejects_unknown_backend(tmp_path: Path) -> None:
     )
 
     with pytest.raises(StorageBackendError, match="NoSuchBackend|no_such_backend"):
+        build_storage_bundle(config, workspace_root=tmp_path)
+
+
+def test_build_storage_bundle_resolves_sqlite_vec_backend(tmp_path: Path) -> None:
+    config = StorageConfig(
+        memory=StorageBackendConfig("sqlite", "cellin.sqlite"),
+        graph=StorageBackendConfig("sqlite", "cellin.sqlite"),
+        vector=StorageBackendConfig("sqlite_vec", "vectors.sqlite"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+    bundle = build_storage_bundle(config, workspace_root=tmp_path)
+
+    assert isinstance(bundle.vector_store, SQLiteVecStore)
+    bundle.vector_store.upsert("memory-1", "Atlas architecture and memory graphs")
+    assert bundle.vector_store.search("Atlas architecture", limit=1)[0].memory_id == "memory-1"
+
+
+def test_build_storage_bundle_rejects_sqlite_vec_without_path(tmp_path: Path) -> None:
+    config = StorageConfig(
+        memory=StorageBackendConfig("sqlite", "cellin.sqlite"),
+        graph=StorageBackendConfig("sqlite", "cellin.sqlite"),
+        vector=StorageBackendConfig("sqlite_vec"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    with pytest.raises(StorageBackendError, match="database_path|SQLite"):
+        build_storage_bundle(config, workspace_root=tmp_path)
+
+
+def test_build_storage_bundle_resolves_pgvector_backend(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class _FakePGVectorStore:
+        def __init__(self, connection_string: str) -> None:
+            self.connection_string = connection_string
+
+    monkeypatch.setattr("cellin.runtime.storage.PGVectorStore", _FakePGVectorStore)
+    config = StorageConfig(
+        memory=StorageBackendConfig("in_memory"),
+        graph=StorageBackendConfig("in_memory"),
+        vector=StorageBackendConfig("pgvector", "postgresql://cellin/test"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    bundle = build_storage_bundle(config, workspace_root=tmp_path)
+
+    assert isinstance(bundle.vector_store, _FakePGVectorStore)
+    assert bundle.vector_store.connection_string == "postgresql://cellin/test"
+
+
+def test_build_storage_bundle_rejects_pgvector_without_connection_string(
+    tmp_path: Path,
+) -> None:
+    config = StorageConfig(
+        memory=StorageBackendConfig("in_memory"),
+        graph=StorageBackendConfig("in_memory"),
+        vector=StorageBackendConfig("pgvector"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    with pytest.raises(StorageBackendError, match="pgvector backend requires a connection string"):
         build_storage_bundle(config, workspace_root=tmp_path)
 
 

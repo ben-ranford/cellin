@@ -18,6 +18,8 @@ from cellin.core import (
     Modality,
     Provenance,
     RetrievalStats,
+    VectorMatch,
+    VectorStore,
 )
 from cellin.evals.retrieval_benchmarks import seeded_benchmark_cases
 from cellin.ranking import WeightedRanker, get_weight_profile
@@ -147,6 +149,25 @@ def _seeded_memories() -> tuple[tuple[MemoryAtom, ...], tuple[MemoryEdge, ...]]:
         ),
     )
     return (atlas_arch, atlas_vision, deploy_yesterday, unrelated), edges
+
+
+class _FakeVectorStore(VectorStore):
+    def __init__(self, matches: tuple[tuple[str, float], ...]) -> None:
+        self._matches = tuple(matches)
+
+    def upsert(self, memory_id: str, text: str) -> None:
+        pass
+
+    def search(self, query: str, *, limit: int = 5) -> tuple[VectorMatch, ...]:
+        del query
+        ordered = sorted(
+            self._matches,
+            key=lambda item: (-item[1], item[0]),
+        )
+        return tuple(
+            VectorMatch(memory_id=memory_id, score=round(score, 6))
+            for memory_id, score in ordered[: max(0, limit)]
+        )
 
 
 def test_concept_profile_uses_graph_expansion_for_related_memory() -> None:
@@ -280,3 +301,62 @@ def test_bundle_skips_oversized_first_candidate_and_selects_in_budget_next() -> 
     assert (
         sum(item.memory.metadata["token_count"] for item in bundle.memories) <= profile.token_budget
     )
+
+
+def test_vector_factors_can_outweigh_lexical_overlap() -> None:
+    now = datetime(2026, 4, 4, tzinfo=UTC)
+    memories = (
+        _memory(
+            "lexical-match",
+            "Atlas architecture and retrieval",
+            observed_at=now - timedelta(days=1),
+            salience=0.9,
+            trust=1.0,
+        ),
+        _memory(
+            "vector-first",
+            "Unrelated historical memory",
+            observed_at=now - timedelta(days=1),
+            salience=0.6,
+            trust=0.8,
+        ),
+    )
+    memory_store = InMemoryMemoryStore(memories)
+    graph_store = InMemoryGraphStore(memories, ())
+    profile = replace(
+        get_weight_profile("balanced"),
+        semantic_similarity=0.0,
+        vector_similarity=1.0,
+        graph_proximity=0.0,
+        recency=0.0,
+        salience=0.0,
+        trust=0.0,
+        reinforcement=0.0,
+        modality_match=0.0,
+    )
+    retriever = WeightedRetriever(
+        candidate_generator=RetrievalCandidateGenerator(
+            memory_store,
+            graph_store,
+            vector_store=_FakeVectorStore(
+                (
+                    ("vector-first", 0.98),
+                    ("lexical-match", 0.01),
+                )
+            ),
+        ),
+        ranker=WeightedRanker(
+            profile=profile,
+            now_provider=lambda: now,
+        ),
+        profile=profile,
+    )
+
+    bundle = retriever.retrieve("Atlas architecture and retrieval", top_k=2)
+
+    assert tuple(item.memory.memory_id for item in bundle.memories) == (
+        "vector-first",
+        "lexical-match",
+    )
+    assert bundle.memories[0].factors[7].name == "vector_similarity"
+    assert bundle.memories[0].factors[7].value == pytest.approx(0.98)
