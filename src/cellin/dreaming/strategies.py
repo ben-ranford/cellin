@@ -6,6 +6,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from typing import cast
 
 from cellin.core import (
     DreamArtifact,
@@ -96,6 +97,78 @@ def _string_list(value: JSONValue) -> list[str]:
     return [item for item in value if isinstance(item, str)]
 
 
+def _group_active_memories_by_topic(memory_store: MemoryStore) -> dict[str, list[MemoryAtom]]:
+    topic_groups: dict[str, list[MemoryAtom]] = defaultdict(list)
+    for memory in memory_store.list():
+        if memory.decay.archived:
+            continue
+        topic = memory.metadata.get("topic")
+        if isinstance(topic, str):
+            topic_groups[topic].append(memory)
+    return topic_groups
+
+
+def _serialize_pairs(pairs: list[tuple[str, str]]) -> list[JSONValue]:
+    return [cast(JSONValue, [left_id, right_id]) for left_id, right_id in pairs]
+
+
+def _build_pair_run_result(
+    *,
+    strategy_name: str,
+    at: datetime,
+    pairs: list[tuple[str, str]],
+    pair_key: str,
+    summary: str,
+    memory_changes: list[DreamMemoryChange],
+    edge_changes: list[DreamEdgeChange],
+) -> DreamRunResult:
+    run_id = f"{strategy_name}:{at.isoformat()}"
+    serialized_pairs = _serialize_pairs(pairs)
+    artifact = DreamArtifact(
+        dream_id=run_id,
+        strategy_name=strategy_name,
+        provenance=Provenance(source_id=run_id, source_type="dream"),
+        created_at=at,
+        summary=summary,
+        affected_memory_ids=tuple(memory_id for pair in pairs for memory_id in pair),
+        metadata={pair_key: serialized_pairs},
+    )
+    diff = DreamDiff(
+        run_id=run_id,
+        strategy_name=strategy_name,
+        created_at=at,
+        memory_changes=tuple(memory_changes),
+        edge_changes=tuple(edge_changes),
+        notes={pair_key: serialized_pairs},
+    )
+    return DreamRunResult(artifact=artifact, diff=diff)
+
+
+def _apply_memory_updates(
+    *,
+    graph_store: GraphStore,
+    memory_store: MemoryStore,
+    before_after: tuple[tuple[MemoryAtom, MemoryAtom], ...],
+) -> list[DreamMemoryChange]:
+    changes: list[DreamMemoryChange] = []
+    for before, after in before_after:
+        memory_store.put(after)
+        graph_store.upsert_memory(after)
+        changes.append(DreamMemoryChange(before.memory_id, before, after))
+    return changes
+
+
+@dataclass(slots=True)
+class _MutationOutcome:
+    memory_changes: list[DreamMemoryChange]
+    edge_changes: list[DreamEdgeChange]
+    pairs: list[tuple[str, str]]
+
+    @classmethod
+    def empty(cls) -> _MutationOutcome:
+        return cls(memory_changes=[], edge_changes=[], pairs=[])
+
+
 @dataclass(slots=True)
 class DeduplicationDreamStrategy:
     """Archives near-identical memories and links them to a canonical node."""
@@ -111,110 +184,152 @@ class DeduplicationDreamStrategy:
         at: datetime | None = None,
     ) -> DreamRunResult | None:
         when = at or datetime.now(UTC)
-        topic_groups: dict[str, list[MemoryAtom]] = defaultdict(list)
-        for memory in memory_store.list():
-            if memory.decay.archived:
-                continue
-            topic = memory.metadata.get("topic")
-            if isinstance(topic, str):
-                topic_groups[topic].append(memory)
+        outcome = _MutationOutcome.empty()
+        for members in _group_active_memories_by_topic(memory_store).values():
+            self._merge_topic_members(
+                members=members,
+                at=when,
+                graph_store=graph_store,
+                memory_store=memory_store,
+                outcome=outcome,
+            )
 
-        memory_changes: list[DreamMemoryChange] = []
-        edge_changes: list[DreamEdgeChange] = []
-        merged_pairs: list[tuple[str, str]] = []
-
-        for _topic, members in topic_groups.items():
-            if len(members) < 2:
-                continue
-
-            for index, left in enumerate(members[:-1]):
-                for right in members[index + 1 :]:
-                    if _contains_conflict(left, right):
-                        continue
-                    if _similarity(left, right) < self.similarity_threshold:
-                        continue
-
-                    canonical = _best_memory((left, right))
-                    duplicate = right if canonical.memory_id == left.memory_id else left
-                    if duplicate.decay.archived:
-                        continue
-
-                    merged_pairs.append((duplicate.memory_id, canonical.memory_id))
-
-                    deduplicated_ids: list[JSONValue] = [
-                        memory_id
-                        for memory_id in sorted(
-                            {
-                                *_string_list(canonical.metadata.get("deduplicated_memory_ids")),
-                                duplicate.memory_id,
-                            }
-                        )
-                    ]
-                    canonical_after = replace(
-                        canonical,
-                        salience_score=min(1.0, canonical.salience_score + 0.05),
-                        retrieval=replace(
-                            canonical.retrieval,
-                            access_count=canonical.retrieval.access_count
-                            + duplicate.retrieval.access_count,
-                        ),
-                        decay=replace(canonical.decay, last_reinforced_at=when),
-                        metadata={
-                            **canonical.metadata,
-                            "deduplicated_memory_ids": deduplicated_ids,
-                        },
-                    )
-                    duplicate_after = replace(
-                        duplicate,
-                        decay=replace(duplicate.decay, archived=True, last_reinforced_at=when),
-                        metadata={**duplicate.metadata, "canonical_memory_id": canonical.memory_id},
-                    )
-                    edge_after = MemoryEdge(
-                        edge_id=f"same-as:{duplicate.memory_id}:{canonical.memory_id}",
-                        source_id=duplicate.memory_id,
-                        target_id=canonical.memory_id,
-                        kind=EdgeKind.SAME_AS,
-                        provenance=Provenance(source_id=self.strategy_name, source_type="dream"),
-                        created_at=when,
-                        metadata={"dream_run": self.strategy_name},
-                    )
-
-                    memory_store.put(canonical_after)
-                    graph_store.upsert_memory(canonical_after)
-                    memory_store.put(duplicate_after)
-                    graph_store.upsert_memory(duplicate_after)
-                    graph_store.upsert_edge(edge_after)
-
-                    memory_changes.extend(
-                        (
-                            DreamMemoryChange(canonical.memory_id, canonical, canonical_after),
-                            DreamMemoryChange(duplicate.memory_id, duplicate, duplicate_after),
-                        )
-                    )
-                    edge_changes.append(DreamEdgeChange(edge_after.edge_id, None, edge_after))
-
-        if not merged_pairs:
+        if not outcome.pairs:
             return None
 
-        run_id = f"{self.strategy_name}:{when.isoformat()}"
-        artifact = DreamArtifact(
-            dream_id=run_id,
+        return _build_pair_run_result(
             strategy_name=self.strategy_name,
-            provenance=Provenance(source_id=run_id, source_type="dream"),
-            created_at=when,
-            summary=f"Archived {len(merged_pairs)} duplicate memories.",
-            affected_memory_ids=tuple(memory_id for pair in merged_pairs for memory_id in pair),
-            metadata={"merged_pairs": [list(pair) for pair in merged_pairs]},
+            at=when,
+            pairs=outcome.pairs,
+            pair_key="merged_pairs",
+            summary=f"Archived {len(outcome.pairs)} duplicate memories.",
+            memory_changes=outcome.memory_changes,
+            edge_changes=outcome.edge_changes,
         )
-        diff = DreamDiff(
-            run_id=run_id,
-            strategy_name=self.strategy_name,
-            created_at=when,
-            memory_changes=tuple(memory_changes),
-            edge_changes=tuple(edge_changes),
-            notes={"merged_pairs": [list(pair) for pair in merged_pairs]},
+
+    def _merge_topic_members(
+        self,
+        *,
+        members: list[MemoryAtom],
+        at: datetime,
+        graph_store: GraphStore,
+        memory_store: MemoryStore,
+        outcome: _MutationOutcome,
+    ) -> None:
+        if len(members) < 2:
+            return
+
+        for index, left in enumerate(members[:-1]):
+            for right in members[index + 1 :]:
+                self._merge_pair(
+                    left=left,
+                    right=right,
+                    at=at,
+                    graph_store=graph_store,
+                    memory_store=memory_store,
+                    outcome=outcome,
+                )
+
+    def _merge_pair(
+        self,
+        *,
+        left: MemoryAtom,
+        right: MemoryAtom,
+        at: datetime,
+        graph_store: GraphStore,
+        memory_store: MemoryStore,
+        outcome: _MutationOutcome,
+    ) -> None:
+        if not self._is_merge_candidate(left=left, right=right):
+            return
+
+        canonical, duplicate = self._canonical_duplicate_pair(left=left, right=right)
+        if duplicate.decay.archived:
+            return
+
+        outcome.pairs.append((duplicate.memory_id, canonical.memory_id))
+        canonical_after, duplicate_after = self._updated_dedup_memories(
+            canonical=canonical,
+            duplicate=duplicate,
+            at=at,
         )
-        return DreamRunResult(artifact=artifact, diff=diff)
+        edge_after = self._same_as_edge(duplicate=duplicate, canonical=canonical, at=at)
+        changes = _apply_memory_updates(
+            graph_store=graph_store,
+            memory_store=memory_store,
+            before_after=((canonical, canonical_after), (duplicate, duplicate_after)),
+        )
+        graph_store.upsert_edge(edge_after)
+        outcome.memory_changes.extend(changes)
+        outcome.edge_changes.append(DreamEdgeChange(edge_after.edge_id, None, edge_after))
+
+    def _is_merge_candidate(self, *, left: MemoryAtom, right: MemoryAtom) -> bool:
+        if _contains_conflict(left, right):
+            return False
+        return _similarity(left, right) >= self.similarity_threshold
+
+    def _canonical_duplicate_pair(
+        self,
+        *,
+        left: MemoryAtom,
+        right: MemoryAtom,
+    ) -> tuple[MemoryAtom, MemoryAtom]:
+        canonical = _best_memory((left, right))
+        duplicate = right if canonical.memory_id == left.memory_id else left
+        return canonical, duplicate
+
+    def _updated_dedup_memories(
+        self,
+        *,
+        canonical: MemoryAtom,
+        duplicate: MemoryAtom,
+        at: datetime,
+    ) -> tuple[MemoryAtom, MemoryAtom]:
+        deduplicated_ids: list[JSONValue] = [
+            memory_id
+            for memory_id in sorted(
+                {
+                    *_string_list(canonical.metadata.get("deduplicated_memory_ids")),
+                    duplicate.memory_id,
+                }
+            )
+        ]
+        canonical_after = replace(
+            canonical,
+            salience_score=min(1.0, canonical.salience_score + 0.05),
+            retrieval=replace(
+                canonical.retrieval,
+                access_count=canonical.retrieval.access_count + duplicate.retrieval.access_count,
+            ),
+            decay=replace(canonical.decay, last_reinforced_at=at),
+            metadata={
+                **canonical.metadata,
+                "deduplicated_memory_ids": deduplicated_ids,
+            },
+        )
+        duplicate_after = replace(
+            duplicate,
+            decay=replace(duplicate.decay, archived=True, last_reinforced_at=at),
+            metadata={**duplicate.metadata, "canonical_memory_id": canonical.memory_id},
+        )
+        return canonical_after, duplicate_after
+
+    def _same_as_edge(
+        self,
+        *,
+        duplicate: MemoryAtom,
+        canonical: MemoryAtom,
+        at: datetime,
+    ) -> MemoryEdge:
+        return MemoryEdge(
+            edge_id=f"same-as:{duplicate.memory_id}:{canonical.memory_id}",
+            source_id=duplicate.memory_id,
+            target_id=canonical.memory_id,
+            kind=EdgeKind.SAME_AS,
+            provenance=Provenance(source_id=self.strategy_name, source_type="dream"),
+            created_at=at,
+            metadata={"dream_run": self.strategy_name},
+        )
 
 
 @dataclass(slots=True)
@@ -231,88 +346,132 @@ class ContradictionRepairDreamStrategy:
         at: datetime | None = None,
     ) -> DreamRunResult | None:
         when = at or datetime.now(UTC)
-        topic_groups: dict[str, list[MemoryAtom]] = defaultdict(list)
-        for memory in memory_store.list():
-            if memory.decay.archived:
-                continue
-            topic = memory.metadata.get("topic")
-            if isinstance(topic, str):
-                topic_groups[topic].append(memory)
-
         existing_edges = _active_edges(graph_store)
-        memory_changes: list[DreamMemoryChange] = []
-        edge_changes: list[DreamEdgeChange] = []
-        repaired_pairs: list[tuple[str, str]] = []
+        outcome = _MutationOutcome.empty()
+        for members in _group_active_memories_by_topic(memory_store).values():
+            self._repair_topic_members(
+                members=members,
+                at=when,
+                graph_store=graph_store,
+                memory_store=memory_store,
+                existing_edges=existing_edges,
+                outcome=outcome,
+            )
 
-        for members in topic_groups.values():
-            ordered = sorted(members, key=lambda memory: memory.observed_at or memory.created_at)
-            for older in ordered[:-1]:
-                for newer in ordered[1:]:
-                    if not _contains_conflict(older, newer):
-                        continue
-
-                    edge_id = f"contradicts:{older.memory_id}:{newer.memory_id}"
-                    if edge_id in existing_edges:
-                        continue
-
-                    older_after = replace(
-                        older,
-                        trust_score=max(0.1, round(older.trust_score - 0.25, 6)),
-                        metadata={**older.metadata, "superseded_by": newer.memory_id},
-                    )
-                    newer_after = replace(
-                        newer,
-                        salience_score=min(1.0, round(newer.salience_score + 0.1, 6)),
-                        metadata={**newer.metadata, "contradicts": older.memory_id},
-                    )
-                    edge_after = MemoryEdge(
-                        edge_id=edge_id,
-                        source_id=older.memory_id,
-                        target_id=newer.memory_id,
-                        kind=EdgeKind.CONTRADICTS,
-                        provenance=Provenance(source_id=self.strategy_name, source_type="dream"),
-                        created_at=when,
-                        metadata={"dream_run": self.strategy_name},
-                    )
-
-                    memory_store.put(older_after)
-                    graph_store.upsert_memory(older_after)
-                    memory_store.put(newer_after)
-                    graph_store.upsert_memory(newer_after)
-                    graph_store.upsert_edge(edge_after)
-                    existing_edges[edge_id] = edge_after
-
-                    repaired_pairs.append((older.memory_id, newer.memory_id))
-                    memory_changes.extend(
-                        (
-                            DreamMemoryChange(older.memory_id, older, older_after),
-                            DreamMemoryChange(newer.memory_id, newer, newer_after),
-                        )
-                    )
-                    edge_changes.append(DreamEdgeChange(edge_id, None, edge_after))
-
-        if not repaired_pairs:
+        if not outcome.pairs:
             return None
 
-        run_id = f"{self.strategy_name}:{when.isoformat()}"
-        artifact = DreamArtifact(
-            dream_id=run_id,
+        return _build_pair_run_result(
             strategy_name=self.strategy_name,
-            provenance=Provenance(source_id=run_id, source_type="dream"),
-            created_at=when,
-            summary=f"Linked {len(repaired_pairs)} contradictory memory pairs.",
-            affected_memory_ids=tuple(memory_id for pair in repaired_pairs for memory_id in pair),
-            metadata={"repaired_pairs": [list(pair) for pair in repaired_pairs]},
+            at=when,
+            pairs=outcome.pairs,
+            pair_key="repaired_pairs",
+            summary=f"Linked {len(outcome.pairs)} contradictory memory pairs.",
+            memory_changes=outcome.memory_changes,
+            edge_changes=outcome.edge_changes,
         )
-        diff = DreamDiff(
-            run_id=run_id,
-            strategy_name=self.strategy_name,
-            created_at=when,
-            memory_changes=tuple(memory_changes),
-            edge_changes=tuple(edge_changes),
-            notes={"repaired_pairs": [list(pair) for pair in repaired_pairs]},
+
+    def _repair_topic_members(
+        self,
+        *,
+        members: list[MemoryAtom],
+        at: datetime,
+        graph_store: GraphStore,
+        memory_store: MemoryStore,
+        existing_edges: dict[str, MemoryEdge],
+        outcome: _MutationOutcome,
+    ) -> None:
+        ordered = sorted(members, key=lambda memory: memory.observed_at or memory.created_at)
+        for older in ordered[:-1]:
+            for newer in ordered[1:]:
+                self._repair_pair(
+                    older=older,
+                    newer=newer,
+                    at=at,
+                    graph_store=graph_store,
+                    memory_store=memory_store,
+                    existing_edges=existing_edges,
+                    outcome=outcome,
+                )
+
+    def _repair_pair(
+        self,
+        *,
+        older: MemoryAtom,
+        newer: MemoryAtom,
+        at: datetime,
+        graph_store: GraphStore,
+        memory_store: MemoryStore,
+        existing_edges: dict[str, MemoryEdge],
+        outcome: _MutationOutcome,
+    ) -> None:
+        if not _contains_conflict(older, newer):
+            return
+
+        edge_id = self._contradiction_edge_id(older=older, newer=newer)
+        if edge_id in existing_edges:
+            return
+
+        older_after, newer_after = self._updated_contradiction_memories(
+            older=older,
+            newer=newer,
         )
-        return DreamRunResult(artifact=artifact, diff=diff)
+        edge_after = self._contradiction_edge(
+            edge_id=edge_id,
+            older=older,
+            newer=newer,
+            at=at,
+        )
+        changes = _apply_memory_updates(
+            graph_store=graph_store,
+            memory_store=memory_store,
+            before_after=((older, older_after), (newer, newer_after)),
+        )
+        graph_store.upsert_edge(edge_after)
+        existing_edges[edge_id] = edge_after
+
+        outcome.pairs.append((older.memory_id, newer.memory_id))
+        outcome.memory_changes.extend(changes)
+        outcome.edge_changes.append(DreamEdgeChange(edge_id, None, edge_after))
+
+    def _contradiction_edge_id(self, *, older: MemoryAtom, newer: MemoryAtom) -> str:
+        return f"contradicts:{older.memory_id}:{newer.memory_id}"
+
+    def _updated_contradiction_memories(
+        self,
+        *,
+        older: MemoryAtom,
+        newer: MemoryAtom,
+    ) -> tuple[MemoryAtom, MemoryAtom]:
+        older_after = replace(
+            older,
+            trust_score=max(0.1, round(older.trust_score - 0.25, 6)),
+            metadata={**older.metadata, "superseded_by": newer.memory_id},
+        )
+        newer_after = replace(
+            newer,
+            salience_score=min(1.0, round(newer.salience_score + 0.1, 6)),
+            metadata={**newer.metadata, "contradicts": older.memory_id},
+        )
+        return older_after, newer_after
+
+    def _contradiction_edge(
+        self,
+        *,
+        edge_id: str,
+        older: MemoryAtom,
+        newer: MemoryAtom,
+        at: datetime,
+    ) -> MemoryEdge:
+        return MemoryEdge(
+            edge_id=edge_id,
+            source_id=older.memory_id,
+            target_id=newer.memory_id,
+            kind=EdgeKind.CONTRADICTS,
+            provenance=Provenance(source_id=self.strategy_name, source_type="dream"),
+            created_at=at,
+            metadata={"dream_run": self.strategy_name},
+        )
 
 
 @dataclass(slots=True)
