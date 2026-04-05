@@ -55,9 +55,9 @@ version-check:
 
 release-smoke: ci package-smoke
 
-verify: fmt-check lint typecheck test eval-smoke version-check
+verify: fmt-check lint typecheck test eval-smoke
 
-ci: verify docs
+ci: verify docs version-check
 
 docs:
 	$(UV) run mkdocs build --strict

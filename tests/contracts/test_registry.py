@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from cellin import __version__
 from cellin.core import Capability, PluginContext, RuntimeConfig
 from cellin.runtime import InMemoryTraceSinkPlugin, PluginRegistry
 
@@ -42,6 +43,10 @@ def test_registry_rejects_duplicate_plugin_ids() -> None:
 
     with pytest.raises(ValueError, match="already registered"):
         registry.register(InMemoryTraceSinkPlugin())
+
+
+def test_builtin_plugin_manifest_version_matches_package_version() -> None:
+    assert InMemoryTraceSinkPlugin.manifest.version == __version__
 
 
 @dataclass
