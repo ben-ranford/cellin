@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
+import cellin.runtime.storage as runtime_storage
 from cellin.cli.config import load_workspace
 from cellin.runtime.storage import (
     StorageBackendConfig,
     StorageBackendError,
+    StorageBackendProvider,
     StorageConfig,
     build_storage_bundle,
+    list_storage_backends,
+    load_storage_backends_from_entry_points,
+    register_storage_backends,
+    setup_storage_backends,
 )
 from cellin.stores import (
     ArangoDBGraphStore,
@@ -36,6 +44,32 @@ from cellin.stores import (
     SQLiteVecStore,
     WeaviateVectorStore,
 )
+
+
+@pytest.fixture
+def storage_registry_snapshot() -> Iterator[None]:
+    snapshot = {
+        role: dict(providers) for role, providers in runtime_storage._BACKEND_REGISTRY.items()
+    }
+    yield
+    for role, providers in runtime_storage._BACKEND_REGISTRY.items():
+        providers.clear()
+        providers.update(snapshot[role])
+
+
+@dataclass
+class _FakeStorageEntryPoint:
+    name: str
+    group: str
+    loaded: object
+
+    def load(self) -> object:
+        return self.loaded
+
+
+class _FakeStorageEntryPoints(list[_FakeStorageEntryPoint]):
+    def select(self, *, group: str) -> list[_FakeStorageEntryPoint]:
+        return [entry_point for entry_point in self if entry_point.group == group]
 
 
 def test_load_workspace_migrates_legacy_database_path(tmp_path: Path) -> None:
@@ -98,6 +132,348 @@ def test_build_storage_bundle_rejects_unknown_backend(tmp_path: Path) -> None:
 
     with pytest.raises(StorageBackendError, match="NoSuchBackend|no_such_backend"):
         build_storage_bundle(config, workspace_root=tmp_path)
+
+
+def test_list_storage_backends_exposes_builtin_providers() -> None:
+    providers = list_storage_backends("memory")
+    backends = {provider.backend for provider in providers}
+
+    assert {"duckdb", "in_memory", "sqlite"}.issubset(backends)
+
+
+def test_list_storage_backends_without_role_returns_all_roles() -> None:
+    providers = list_storage_backends()
+    roles = {provider.role for provider in providers}
+
+    assert roles == {"memory", "graph", "vector", "representation"}
+
+
+def test_register_storage_backends_rejects_unknown_role(storage_registry_snapshot: None) -> None:
+    with pytest.raises(StorageBackendError, match="Unknown storage role"):
+        register_storage_backends(
+            StorageBackendProvider(
+                role="unknown",  # type: ignore[arg-type]
+                backend="invalid_role_backend",
+                builder=lambda config, *, workspace_root: (config, workspace_root),
+            )
+        )
+
+
+def test_register_storage_backends_rejects_blank_backend_names(
+    storage_registry_snapshot: None,
+) -> None:
+    with pytest.raises(StorageBackendError, match="must not be blank"):
+        register_storage_backends(
+            StorageBackendProvider(
+                role="memory",
+                backend="   ",
+                builder=lambda config, *, workspace_root: (config, workspace_root),
+            )
+        )
+
+
+def test_register_storage_backends_allows_re_registering_same_provider_instance(
+    storage_registry_snapshot: None,
+) -> None:
+    provider = StorageBackendProvider(
+        role="memory",
+        backend="same_instance_backend",
+        builder=lambda config, *, workspace_root: (config, workspace_root),
+    )
+
+    register_storage_backends(provider)
+    register_storage_backends(provider)
+
+    matching_backends = [
+        item.backend
+        for item in list_storage_backends("memory")
+        if item.backend == "same_instance_backend"
+    ]
+
+    assert matching_backends == ["same_instance_backend"]
+
+
+def test_register_storage_backends_supports_custom_provider_resolution(
+    storage_registry_snapshot: None,
+    tmp_path: Path,
+) -> None:
+    class _CustomMemoryStore:
+        def __init__(self, connection_string: str) -> None:
+            self.connection_string = connection_string
+
+        def put(self, memory: object) -> None:
+            del memory
+
+        def get(self, memory_id: str) -> None:
+            del memory_id
+            return None
+
+        def list(self) -> tuple[object, ...]:
+            return ()
+
+    def _build_custom_memory_store(
+        config: StorageBackendConfig,
+        *,
+        workspace_root: Path,
+    ) -> _CustomMemoryStore:
+        del workspace_root
+        return _CustomMemoryStore(config.database_path or "")
+
+    register_storage_backends(
+        StorageBackendProvider(
+            role="memory",
+            backend="unit_test_memory",
+            builder=_build_custom_memory_store,
+        )
+    )
+
+    bundle = build_storage_bundle(
+        StorageConfig(
+            memory=StorageBackendConfig("unit_test_memory", "custom://memory"),
+            graph=StorageBackendConfig("in_memory"),
+            vector=StorageBackendConfig("in_memory_vector_index"),
+            representation=StorageBackendConfig("in_memory_vector_index"),
+        ),
+        workspace_root=tmp_path,
+    )
+
+    assert isinstance(bundle.memory_store, _CustomMemoryStore)
+    assert bundle.memory_store.connection_string == "custom://memory"
+
+
+def test_load_storage_backends_from_entry_points_registers_providers(
+    storage_registry_snapshot: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class _EntryPointMemoryStore:
+        def __init__(self, marker: str) -> None:
+            self.marker = marker
+
+        def put(self, memory: object) -> None:
+            del memory
+
+        def get(self, memory_id: str) -> None:
+            del memory_id
+            return None
+
+        def list(self) -> tuple[object, ...]:
+            return ()
+
+    def _build_entrypoint_memory_store(
+        config: StorageBackendConfig,
+        *,
+        workspace_root: Path,
+    ) -> _EntryPointMemoryStore:
+        del workspace_root
+        return _EntryPointMemoryStore(config.database_path or "loaded")
+
+    provider = StorageBackendProvider(
+        role="memory",
+        backend="entrypoint_memory",
+        builder=_build_entrypoint_memory_store,
+    )
+
+    monkeypatch.setattr(
+        runtime_storage.metadata,
+        "entry_points",
+        lambda: _FakeStorageEntryPoints(
+            [
+                _FakeStorageEntryPoint(
+                    name="entrypoint-memory",
+                    group=runtime_storage.DEFAULT_STORAGE_ENTRYPOINT_GROUP,
+                    loaded=lambda: provider,
+                )
+            ]
+        ),
+    )
+
+    loaded = load_storage_backends_from_entry_points()
+    bundle = build_storage_bundle(
+        StorageConfig(
+            memory=StorageBackendConfig("entrypoint_memory", "from-entrypoint"),
+            graph=StorageBackendConfig("in_memory"),
+            vector=StorageBackendConfig("in_memory_vector_index"),
+            representation=StorageBackendConfig("in_memory_vector_index"),
+        ),
+        workspace_root=tmp_path,
+    )
+
+    assert loaded == ("memory:entrypoint_memory",)
+    assert isinstance(bundle.memory_store, _EntryPointMemoryStore)
+    assert bundle.memory_store.marker == "from-entrypoint"
+
+
+def test_load_storage_backends_from_entry_points_supports_provider_sequences(
+    storage_registry_snapshot: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_one = StorageBackendProvider(
+        role="memory",
+        backend="sequence_memory_one",
+        builder=lambda config, *, workspace_root: (config, workspace_root),
+    )
+    provider_two = StorageBackendProvider(
+        role="graph",
+        backend="sequence_graph_two",
+        builder=lambda config, *, workspace_root: (config, workspace_root),
+    )
+
+    monkeypatch.setattr(
+        runtime_storage.metadata,
+        "entry_points",
+        lambda: _FakeStorageEntryPoints(
+            [
+                _FakeStorageEntryPoint(
+                    name="sequence-providers",
+                    group=runtime_storage.DEFAULT_STORAGE_ENTRYPOINT_GROUP,
+                    loaded=lambda: (provider_one, [provider_two]),
+                )
+            ]
+        ),
+    )
+
+    loaded = load_storage_backends_from_entry_points()
+
+    assert loaded == ("memory:sequence_memory_one", "graph:sequence_graph_two")
+
+
+def test_load_storage_backends_from_entry_points_rejects_invalid_targets(
+    storage_registry_snapshot: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        runtime_storage.metadata,
+        "entry_points",
+        lambda: _FakeStorageEntryPoints(
+            [
+                _FakeStorageEntryPoint(
+                    name="invalid-provider",
+                    group=runtime_storage.DEFAULT_STORAGE_ENTRYPOINT_GROUP,
+                    loaded=lambda: "invalid",
+                )
+            ]
+        ),
+    )
+
+    with pytest.raises(TypeError, match="Storage backend entry points"):
+        load_storage_backends_from_entry_points()
+
+
+def test_initialize_storage_backends_can_skip_entry_point_loading(
+    storage_registry_snapshot: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded = False
+
+    def _record_load(
+        *,
+        entrypoint_group: str = runtime_storage.DEFAULT_STORAGE_ENTRYPOINT_GROUP,
+    ) -> tuple[str, ...]:
+        del entrypoint_group
+        nonlocal loaded
+        loaded = True
+        return ("memory:unexpected",)
+
+    monkeypatch.setattr(runtime_storage, "load_storage_backends_from_entry_points", _record_load)
+
+    assert runtime_storage.initialize_storage_backends(load_entry_points=False) == ()
+    assert loaded is False
+
+
+def test_setup_storage_backends_respects_role_and_dry_run_filters(
+    storage_registry_snapshot: None,
+    tmp_path: Path,
+) -> None:
+    setup_calls: list[str] = []
+
+    class _SetupMemoryStore:
+        def put(self, memory: object) -> None:
+            del memory
+
+        def get(self, memory_id: str) -> None:
+            del memory_id
+            return None
+
+        def list(self) -> tuple[object, ...]:
+            return ()
+
+    def _build_setup_memory_store(
+        config: StorageBackendConfig,
+        *,
+        workspace_root: Path,
+    ) -> _SetupMemoryStore:
+        del config, workspace_root
+        return _SetupMemoryStore()
+
+    def _setup_memory_backend(
+        config: StorageBackendConfig,
+        *,
+        workspace_root: Path,
+    ) -> None:
+        setup_calls.append(f"{config.backend}@{workspace_root}")
+
+    register_storage_backends(
+        StorageBackendProvider(
+            role="memory",
+            backend="setup_test_memory",
+            builder=_build_setup_memory_store,
+            setup=_setup_memory_backend,
+        )
+    )
+
+    storage = StorageConfig(
+        memory=StorageBackendConfig("setup_test_memory"),
+        graph=StorageBackendConfig("in_memory"),
+        vector=StorageBackendConfig("in_memory_vector_index"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    planned = setup_storage_backends(
+        storage,
+        workspace_root=tmp_path,
+        include_roles=("memory",),
+        dry_run=True,
+    )
+    resolved = setup_storage_backends(
+        storage,
+        workspace_root=tmp_path,
+        include_roles=("memory",),
+        dry_run=False,
+    )
+
+    assert planned == (("memory", "setup_test_memory"),)
+    assert resolved == (("memory", "setup_test_memory"),)
+    assert setup_calls == [f"setup_test_memory@{tmp_path}"]
+
+
+def test_setup_storage_backends_returns_no_matches_when_backend_filter_skips_all_roles(
+    storage_registry_snapshot: None,
+    tmp_path: Path,
+) -> None:
+    storage = StorageConfig(
+        memory=StorageBackendConfig("in_memory"),
+        graph=StorageBackendConfig("in_memory"),
+        vector=StorageBackendConfig("in_memory_vector_index"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    assert setup_storage_backends(storage, workspace_root=tmp_path, backend_filter="sqlite") == ()
+
+
+def test_setup_storage_backends_rejects_unknown_selected_backend(
+    storage_registry_snapshot: None,
+    tmp_path: Path,
+) -> None:
+    storage = StorageConfig(
+        memory=StorageBackendConfig("missing_setup_backend"),
+        graph=StorageBackendConfig("in_memory"),
+        vector=StorageBackendConfig("in_memory_vector_index"),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    with pytest.raises(StorageBackendError, match="missing_setup_backend"):
+        setup_storage_backends(storage, workspace_root=tmp_path, include_roles=("memory",))
 
 
 def test_build_storage_bundle_resolves_sqlite_vec_backend(tmp_path: Path) -> None:

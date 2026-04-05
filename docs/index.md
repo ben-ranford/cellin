@@ -15,11 +15,15 @@ consolidate or simplify that graph over time.
 
 ## Local workflow
 
-The CLI exercises the same ingest, retrieval, dreaming, and eval paths that the tests use.
+The CLI exercises the same ingest, retrieval, dreaming, and eval paths that the tests use. Storage
+providers are discoverable through the runtime registry and the `cellin.storage` entry-point group,
+so durable backends can be listed or initialized explicitly before a workspace starts ingesting.
 
 1. `python -m cellin.cli init --workspace ./.cellin`
-2. `python -m cellin.cli ingest --config examples/starter/cellin-starter.json --input examples/starter/seed_envelopes.json`
-3. `python -m cellin.cli retrieve --config examples/starter/cellin-starter.json --query "memory graph retrieval" --top-k 2`
-4. `python -m cellin.cli dream --config examples/starter/cellin-starter.json --strategy abstraction`
-5. `python -m cellin.cli eval run --suite smoke --config examples/starter/cellin-starter.json --output eval-results/starter-smoke.json`
-6. `python -m cellin.cli trace inspect --config examples/starter/cellin-starter.json --limit 5`
+2. `python -m cellin.cli storage list --role memory`
+3. `python -m cellin.cli storage init --config examples/starter/cellin-starter.json --dry-run`
+4. `python -m cellin.cli ingest --config examples/starter/cellin-starter.json --input examples/starter/seed_envelopes.json`
+5. `python -m cellin.cli retrieve --config examples/starter/cellin-starter.json --query "memory graph retrieval" --top-k 2`
+6. `python -m cellin.cli dream --config examples/starter/cellin-starter.json --strategy abstraction`
+7. `python -m cellin.cli eval run --suite smoke --config examples/starter/cellin-starter.json --output eval-results/starter-smoke.json`
+8. `python -m cellin.cli trace inspect --config examples/starter/cellin-starter.json --limit 5`

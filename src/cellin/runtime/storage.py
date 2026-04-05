@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
@@ -36,6 +38,7 @@ from cellin.stores import (
 )
 
 StorageRole = Literal["graph", "memory", "representation", "vector"]
+DEFAULT_STORAGE_ENTRYPOINT_GROUP = "cellin.storage"
 
 
 class StorageBackendError(ValueError):
@@ -107,13 +110,203 @@ class BackendBuilder(Protocol):
     ) -> object: ...
 
 
-__all__ = [
-    "StorageBackendConfig",
-    "StorageBackendError",
-    "StorageConfig",
-    "StorageBundle",
-    "build_storage_bundle",
-]
+class StorageBackendSetup(Protocol):
+    """Optional explicit setup hook used by CLI operations."""
+
+    def __call__(
+        self,
+        config: StorageBackendConfig,
+        *,
+        workspace_root: Path,
+    ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StorageBackendProvider:
+    """Runtime registry contract for pluggable storage backends."""
+
+    role: StorageRole
+    backend: str
+    builder: BackendBuilder
+    setup: StorageBackendSetup | None = None
+
+
+_BACKEND_REGISTRY: dict[StorageRole, dict[str, StorageBackendProvider]] = {
+    "memory": {},
+    "graph": {},
+    "vector": {},
+    "representation": {},
+}
+
+
+def _normalize_role(role: str) -> StorageRole:
+    normalized = role.lower()
+    if normalized not in {"graph", "memory", "representation", "vector"}:
+        raise StorageBackendError(f"Unknown storage role: {role}")
+    return cast(StorageRole, normalized)
+
+
+def _coerce_backend_name(raw: str) -> str:
+    normalized = raw.strip()
+    if not normalized:
+        raise StorageBackendError("Storage backend names must not be blank.")
+    return normalized
+
+
+def register_storage_backends(*providers: StorageBackendProvider) -> None:
+    """Register storage providers with the runtime boundary."""
+
+    for provider in providers:
+        role_registry = _BACKEND_REGISTRY[_normalize_role(provider.role)]
+        backend_name = _coerce_backend_name(provider.backend)
+        existing = role_registry.get(backend_name)
+        if existing is provider or (
+            existing is not None
+            and existing.role == provider.role
+            and existing.builder is provider.builder
+            and existing.setup is provider.setup
+        ):
+            continue
+        if existing is not None:
+            raise StorageBackendError(
+                f"Storage backend `{backend_name}` already registered for role `{provider.role}`"
+            )
+        role_registry[backend_name] = StorageBackendProvider(
+            role=provider.role,
+            backend=backend_name,
+            builder=provider.builder,
+            setup=provider.setup,
+        )
+
+
+def list_storage_backends(role: StorageRole | None = None) -> tuple[StorageBackendProvider, ...]:
+    """List registered backends in registration order for each role."""
+
+    _register_builtin_backends()
+
+    if role is not None:
+        role_registry = _BACKEND_REGISTRY[_normalize_role(role)]
+        return tuple(role_registry.values())
+
+    providers: list[StorageBackendProvider] = []
+    for role in ("memory", "graph", "vector", "representation"):
+        providers.extend(_BACKEND_REGISTRY[cast(StorageRole, role)].values())
+    return tuple(providers)
+
+
+def _coerce_provider(raw: object) -> tuple[StorageBackendProvider, ...]:
+    if isinstance(raw, StorageBackendProvider):
+        return (raw,)
+
+    if isinstance(raw, (tuple, list)):
+        providers: list[StorageBackendProvider] = []
+        for item in raw:
+            providers.extend(_coerce_provider(item))
+        return tuple(providers)
+
+    raise TypeError(
+        "Storage backend entry points must yield `StorageBackendProvider`, "
+        "a tuple of them, or an equivalent sequence."
+    )
+
+
+def _load_storage_backend_provider_target(loaded: object) -> tuple[StorageBackendProvider, ...]:
+    should_instantiate = isinstance(loaded, type) or (
+        callable(loaded) and not isinstance(loaded, StorageBackendProvider)
+    )
+    candidate = cast(Callable[[], object], loaded)() if should_instantiate else loaded
+    return _coerce_provider(candidate)
+
+
+def load_storage_backends_from_entry_points(
+    *,
+    entrypoint_group: str = DEFAULT_STORAGE_ENTRYPOINT_GROUP,
+) -> tuple[str, ...]:
+    """Discover additional storage providers from entry points."""
+
+    selected = metadata.entry_points().select(group=entrypoint_group)
+    loaded: list[str] = []
+
+    for entry_point in selected:
+        providers = _load_storage_backend_provider_target(entry_point.load())
+
+        for provider in providers:
+            try:
+                register_storage_backends(provider)
+            except StorageBackendError:
+                # registration is idempotent across process boundaries; ignore repeats
+                pass
+            loaded.append(f"{provider.role}:{provider.backend}")
+
+    return tuple(loaded)
+
+
+def initialize_storage_backends(
+    *,
+    load_entry_points: bool = True,
+    entrypoint_group: str = DEFAULT_STORAGE_ENTRYPOINT_GROUP,
+) -> tuple[str, ...]:
+    """Initialize built-in providers and optionally discover entry-point backends."""
+
+    _register_builtin_backends()
+    if not load_entry_points:
+        return ()
+    return load_storage_backends_from_entry_points(entrypoint_group=entrypoint_group)
+
+
+def _resolve_backend(
+    role: StorageRole,
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> object:
+    role_registry = _BACKEND_REGISTRY[role]
+    provider = role_registry.get(config.backend)
+    if provider is None:
+        raise StorageBackendError(f"Unknown backend `{config.backend}` for role `{role}`")
+    return provider.builder(config, workspace_root=workspace_root)
+
+
+def setup_storage_backends(
+    storage: StorageConfig,
+    *,
+    workspace_root: Path,
+    include_roles: tuple[StorageRole, ...] | None = None,
+    backend_filter: str | None = None,
+    dry_run: bool = False,
+) -> tuple[tuple[StorageRole, str], ...]:
+    """Run explicit setup for selected durable backends."""
+
+    initialize_storage_backends()
+
+    targets: tuple[tuple[StorageRole, StorageBackendConfig], ...] = (
+        ("memory", storage.memory),
+        ("graph", storage.graph),
+        ("vector", storage.vector),
+        ("representation", storage.representation),
+    )
+
+    selected_roles = set(include_roles or ("memory", "graph", "vector", "representation"))
+    resolved: list[tuple[StorageRole, str]] = []
+
+    for role, config in targets:
+        if role not in selected_roles:
+            continue
+        if backend_filter is not None and config.backend != backend_filter:
+            continue
+
+        provider = _BACKEND_REGISTRY[role].get(config.backend)
+        if provider is None:
+            raise StorageBackendError(f"Unknown backend `{config.backend}` for role `{role}`")
+
+        if not dry_run:
+            if provider.setup is None:
+                provider.builder(config, workspace_root=workspace_root)
+            else:
+                provider.setup(config, workspace_root=workspace_root)
+        resolved.append((role, config.backend))
+
+    return tuple(resolved)
 
 
 def _resolve_database_path(path_value: str | None, *, workspace_root: Path) -> str:
@@ -383,54 +576,106 @@ def _build_redis_vector_store(
     return RedisVectorStore(_resolve_connection_string(config, backend_name="redis_vector"))
 
 
-_MEMORY_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
-    "duckdb": _build_duckdb_memory_store,
-    "mysql": _build_mysql_memory_store,
-    "sqlite": _build_sqlite_memory_store,
-    "postgresql": _build_postgresql_memory_store,
-    "in_memory": _build_in_memory_memory_store,
-    "mongodb": _build_mongodb_memory_store,
-    "redis": _build_redis_memory_store,
-}
+def _register_builtin_backends() -> None:
+    if _BACKEND_REGISTRY["memory"]:
+        return
 
+    register_storage_backends(
+        StorageBackendProvider(role="memory", backend="duckdb", builder=_build_duckdb_memory_store),
+        StorageBackendProvider(role="memory", backend="mysql", builder=_build_mysql_memory_store),
+        StorageBackendProvider(role="memory", backend="sqlite", builder=_build_sqlite_memory_store),
+        StorageBackendProvider(
+            role="memory", backend="in_memory", builder=_build_in_memory_memory_store
+        ),
+        StorageBackendProvider(
+            role="memory", backend="postgresql", builder=_build_postgresql_memory_store
+        ),
+        StorageBackendProvider(
+            role="memory", backend="mongodb", builder=_build_mongodb_memory_store
+        ),
+        StorageBackendProvider(role="memory", backend="redis", builder=_build_redis_memory_store),
+    )
 
-_GRAPH_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
-    "arangodb": _build_arangodb_graph_store,
-    "duckdb": _build_duckdb_graph_store,
-    "in_memory": _build_in_memory_graph_store,
-    "memgraph": _build_memgraph_graph_store,
-    "mongodb": _build_mongodb_graph_store,
-    "mysql": _build_mysql_graph_store,
-    "neo4j": _build_neo4j_graph_store,
-    "postgresql": _build_postgresql_graph_store,
-    "redis": _build_redis_graph_store,
-    "sqlite": _build_sqlite_graph_store,
-}
+    register_storage_backends(
+        StorageBackendProvider(
+            role="graph", backend="arangodb", builder=_build_arangodb_graph_store
+        ),
+        StorageBackendProvider(role="graph", backend="duckdb", builder=_build_duckdb_graph_store),
+        StorageBackendProvider(
+            role="graph", backend="in_memory", builder=_build_in_memory_graph_store
+        ),
+        StorageBackendProvider(
+            role="graph", backend="memgraph", builder=_build_memgraph_graph_store
+        ),
+        StorageBackendProvider(role="graph", backend="mongodb", builder=_build_mongodb_graph_store),
+        StorageBackendProvider(role="graph", backend="mysql", builder=_build_mysql_graph_store),
+        StorageBackendProvider(role="graph", backend="neo4j", builder=_build_neo4j_graph_store),
+        StorageBackendProvider(
+            role="graph", backend="postgresql", builder=_build_postgresql_graph_store
+        ),
+        StorageBackendProvider(role="graph", backend="redis", builder=_build_redis_graph_store),
+        StorageBackendProvider(role="graph", backend="sqlite", builder=_build_sqlite_graph_store),
+    )
 
+    register_storage_backends(
+        StorageBackendProvider(
+            role="vector", backend="in_memory_vector_index", builder=_build_vector_store
+        ),
+        StorageBackendProvider(
+            role="vector", backend="sqlite_vec", builder=_build_sqlite_vec_store
+        ),
+        StorageBackendProvider(role="vector", backend="pgvector", builder=_build_pgvector_store),
+        StorageBackendProvider(role="vector", backend="pinecone", builder=_build_pinecone_store),
+        StorageBackendProvider(role="vector", backend="qdrant", builder=_build_qdrant_store),
+        StorageBackendProvider(role="vector", backend="weaviate", builder=_build_weaviate_store),
+        StorageBackendProvider(role="vector", backend="milvus", builder=_build_milvus_store),
+        StorageBackendProvider(
+            role="vector", backend="redis_vector", builder=_build_redis_vector_store
+        ),
+    )
 
-_VECTOR_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
-    "in_memory_vector_index": _build_vector_store,
-    "sqlite_vec": _build_sqlite_vec_store,
-    "pgvector": _build_pgvector_store,
-    "pinecone": _build_pinecone_store,
-    "qdrant": _build_qdrant_store,
-    "weaviate": _build_weaviate_store,
-    "milvus": _build_milvus_store,
-    "redis_vector": _build_redis_vector_store,
-}
-
-
-def _resolve_backend(
-    role: StorageRole,
-    config: StorageBackendConfig,
-    *,
-    backend_registry: dict[str, BackendBuilder],
-    workspace_root: Path,
-) -> object:
-    builder = backend_registry.get(config.backend)
-    if builder is None:
-        raise StorageBackendError(f"Unknown backend `{config.backend}` for role `{role}`")
-    return builder(config, workspace_root=workspace_root)
+    register_storage_backends(
+        StorageBackendProvider(
+            role="representation",
+            backend="in_memory_vector_index",
+            builder=_build_vector_store,
+        ),
+        StorageBackendProvider(
+            role="representation",
+            backend="sqlite_vec",
+            builder=_build_sqlite_vec_store,
+        ),
+        StorageBackendProvider(
+            role="representation",
+            backend="pgvector",
+            builder=_build_pgvector_store,
+        ),
+        StorageBackendProvider(
+            role="representation",
+            backend="pinecone",
+            builder=_build_pinecone_store,
+        ),
+        StorageBackendProvider(
+            role="representation",
+            backend="qdrant",
+            builder=_build_qdrant_store,
+        ),
+        StorageBackendProvider(
+            role="representation",
+            backend="weaviate",
+            builder=_build_weaviate_store,
+        ),
+        StorageBackendProvider(
+            role="representation",
+            backend="milvus",
+            builder=_build_milvus_store,
+        ),
+        StorageBackendProvider(
+            role="representation",
+            backend="redis_vector",
+            builder=_build_redis_vector_store,
+        ),
+    )
 
 
 def build_storage_bundle(
@@ -440,12 +685,13 @@ def build_storage_bundle(
 ) -> StorageBundle:
     """Resolve role configs to concrete storage objects."""
 
+    initialize_storage_backends()
+
     memory_store = cast(
         MemoryStore,
         _resolve_backend(
             "memory",
             storage.memory,
-            backend_registry=_MEMORY_BACKEND_REGISTRY,
             workspace_root=workspace_root,
         ),
     )
@@ -454,7 +700,6 @@ def build_storage_bundle(
         _resolve_backend(
             "graph",
             storage.graph,
-            backend_registry=_GRAPH_BACKEND_REGISTRY,
             workspace_root=workspace_root,
         ),
     )
@@ -463,7 +708,6 @@ def build_storage_bundle(
         _resolve_backend(
             "vector",
             storage.vector,
-            backend_registry=_VECTOR_BACKEND_REGISTRY,
             workspace_root=workspace_root,
         ),
     )
@@ -472,7 +716,6 @@ def build_storage_bundle(
         _resolve_backend(
             "representation",
             storage.representation,
-            backend_registry=_VECTOR_BACKEND_REGISTRY,
             workspace_root=workspace_root,
         ),
     )
@@ -483,3 +726,21 @@ def build_storage_bundle(
         vector_store=vector_store,
         representation_store=representation_store,
     )
+
+
+__all__ = [
+    "DEFAULT_STORAGE_ENTRYPOINT_GROUP",
+    "StorageBackendConfig",
+    "StorageBackendError",
+    "StorageBackendProvider",
+    "StorageBackendSetup",
+    "StorageConfig",
+    "StorageRole",
+    "StorageBundle",
+    "build_storage_bundle",
+    "initialize_storage_backends",
+    "list_storage_backends",
+    "load_storage_backends_from_entry_points",
+    "register_storage_backends",
+    "setup_storage_backends",
+]

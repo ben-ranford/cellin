@@ -75,6 +75,36 @@ jobs:
           name: package-smoke-dist
           path: dist/*
 
+  storage-defaults:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: in-memory
+            selector: test_cli_storage_init_dry_run_reports_default_in_memory_preset
+          - label: sqlite
+            selector: test_cli_storage_init_initializes_sqlite_and_records_trace
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Sync dependencies
+        run: python -m uv sync --dev --frozen
+
+      - name: Run storage default coverage (${{ matrix.label }})
+        run: python -m uv run pytest -q tests/integration/cli/test_storage_cli.py -k "${{ matrix.selector }}"
+
   nightly-evals:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
@@ -102,3 +132,38 @@ jobs:
         with:
           name: full-eval-report
           path: eval-results/full.json
+
+  nightly-storage-backends:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: relational
+            extra_args: --extra sql-backends
+            pytest_targets: tests/contracts/test_storage.py tests/integration/stores/test_sql_backends.py
+          - label: graph
+            extra_args: --extra graph-backends
+            pytest_targets: tests/contracts/test_storage.py tests/integration/stores/test_graph_backends.py
+          - label: vector
+            extra_args: --extra vector-backends
+            pytest_targets: tests/contracts/test_storage.py tests/integration/stores/test_pgvector.py tests/integration/stores/test_remote_vector_backends.py
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Sync dependencies for ${{ matrix.label }}
+        run: python -m uv sync --dev --frozen ${{ matrix.extra_args }}
+
+      - name: Run backend coverage (${{ matrix.label }})
+        run: python -m uv run pytest -q ${{ matrix.pytest_targets }}

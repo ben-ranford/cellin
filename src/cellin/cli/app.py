@@ -7,6 +7,7 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from cellin import __version__
 from cellin.cli.config import (
@@ -27,10 +28,15 @@ from cellin.runtime import (
     InMemoryTraceSinkPlugin,
     PluginRegistry,
     StorageBundle,
+    StorageRole,
     build_storage_bundle,
+    list_storage_backends,
+    load_storage_backends_from_entry_points,
+    setup_storage_backends,
 )
 
 TRACE_INSPECT_SUCCESS_EXIT_CODE = 0
+STORAGE_ROLE_CHOICES = ("memory", "graph", "vector", "representation")
 
 
 def _load_envelopes(input_path: Path) -> tuple[ArtifactEnvelope, ...]:
@@ -187,6 +193,57 @@ def cmd_plugin_list(_: argparse.Namespace) -> int:
     return 0
 
 
+def _selected_storage_roles(raw_roles: Sequence[str] | None) -> tuple[StorageRole, ...] | None:
+    if not raw_roles:
+        return None
+    return tuple(cast(StorageRole, role) for role in raw_roles)
+
+
+def cmd_storage_list(args: argparse.Namespace) -> int:
+    try:
+        load_storage_backends_from_entry_points()
+    except (TypeError, ValueError):
+        pass
+
+    providers = list_storage_backends(cast(StorageRole, args.role) if args.role else None)
+    for provider in providers:
+        print(f"role={provider.role} backend={provider.backend}")
+    return 0
+
+
+def cmd_storage_init(args: argparse.Namespace) -> int:
+    config_path = Path(args.config)
+    workspace = load_workspace(config_path)
+    selected_roles = _selected_storage_roles(args.role)
+    resolved = setup_storage_backends(
+        workspace.storage,
+        workspace_root=config_path.parent,
+        include_roles=selected_roles,
+        backend_filter=args.backend,
+        dry_run=bool(args.dry_run),
+    )
+    action = "planned" if args.dry_run else "initialized"
+    if not resolved:
+        print("no storage backends selected")
+    else:
+        for role, backend in resolved:
+            print(f"action={action} role={role} backend={backend}")
+
+    _record(
+        config_path,
+        "cli.storage.init",
+        {
+            "action_count": len(resolved),
+            "action": action,
+            "backend_filter": args.backend or "",
+            "roles": list(selected_roles)
+            if selected_roles is not None
+            else list(STORAGE_ROLE_CHOICES),
+        },
+    )
+    return 0
+
+
 def cmd_eval_run(args: argparse.Namespace) -> int:
     output_path = Path(args.output) if args.output else Path("eval-results") / f"{args.suite}.json"
     report = run_evaluation_suite(args.suite, output_path=output_path)
@@ -247,6 +304,18 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("deduplication", "contradiction_repair", "abstraction"),
     )
     dream_parser.set_defaults(handler=cmd_dream)
+
+    storage_parser = subparsers.add_parser("storage")
+    storage_subparsers = storage_parser.add_subparsers(dest="storage_command", required=True)
+    storage_list_parser = storage_subparsers.add_parser("list")
+    storage_list_parser.add_argument("--role", choices=STORAGE_ROLE_CHOICES)
+    storage_list_parser.set_defaults(handler=cmd_storage_list)
+    storage_init_parser = storage_subparsers.add_parser("init")
+    storage_init_parser.add_argument("--config", required=True)
+    storage_init_parser.add_argument("--role", action="append", choices=STORAGE_ROLE_CHOICES)
+    storage_init_parser.add_argument("--backend")
+    storage_init_parser.add_argument("--dry-run", action="store_true")
+    storage_init_parser.set_defaults(handler=cmd_storage_init)
 
     plugin_parser = subparsers.add_parser("plugin")
     plugin_subparsers = plugin_parser.add_subparsers(dest="plugin_command", required=True)

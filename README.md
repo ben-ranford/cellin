@@ -29,6 +29,8 @@ From the repository root:
 ```bash
 WORKSPACE=.cellin-workspace
 python3 -m uv run cellin init --workspace "$WORKSPACE"
+python3 -m uv run cellin storage list --role memory
+python3 -m uv run cellin storage init --config "$WORKSPACE/cellin.json" --dry-run
 python3 -m uv run cellin ingest --config "$WORKSPACE/cellin.json" --input examples/starter/seed_envelopes.json
 python3 -m uv run cellin retrieve --config "$WORKSPACE/cellin.json" --query "memory graph retrieval" --top-k 2
 python3 -m uv run cellin dream --config "$WORKSPACE/cellin.json" --strategy abstraction
@@ -58,6 +60,11 @@ Workspace config now supports role-specific storage backends:
 
 Legacy workspaces that only define `database_path` continue to work and are migrated to this shape behind the scenes.
 
+Use `cellin storage list` to inspect the built-in provider registry and any third-party providers
+registered through the `cellin.storage` entry-point group. Run `cellin storage init --config
+<workspace>/cellin.json` before first use when you want an explicit, idempotent setup step for
+durable backends.
+
 For an explicit SQLite preset, set:
 
 ```json
@@ -74,6 +81,7 @@ python3 -m pip install cellin[duckdb]
 python3 -m pip install cellin[postgresql]
 python3 -m pip install cellin[mysql]
 python3 -m pip install cellin[sql-backends]
+python3 -m pip install cellin[storage-backends]
 ```
 
 Use `duckdb` to point both roles at a local DB file:
@@ -154,10 +162,26 @@ upserts, it returns `None` and retrieval falls back to the configured memory sto
 truth. That keeps mixed deployments working without caller changes while making the graph-local
 snapshot behavior explicit.
 
+For vector-backed retrieval stores, install the optional dependencies you need:
+
+```bash
+python3 -m pip install cellin[pgvector]
+python3 -m pip install cellin[pinecone]
+python3 -m pip install cellin[qdrant]
+python3 -m pip install cellin[weaviate]
+python3 -m pip install cellin[milvus]
+python3 -m pip install cellin[redis-vector]
+python3 -m pip install cellin[vector-backends]
+```
+
+Use `cellin storage init --config "$WORKSPACE/cellin.json"` after switching a workspace onto a
+durable backend family so local files, schemas, or remote collection bootstrap happen explicitly
+before ingest or retrieval.
+
 
 ## Primary surfaces
 
-- CLI: `cellin init`, `ingest`, `retrieve`, `dream`, `plugin list`, `eval run`, `trace inspect`
+- CLI: `cellin init`, `storage list`, `storage init`, `ingest`, `retrieve`, `dream`, `plugin list`, `eval run`, `trace inspect`
 - Ingestion: `cellin.ingest.ArtifactEnvelope` and `cellin.ingest.CanonicalIngestor`
 - Retrieval: `cellin.retrieval.WeightedRetriever`, `cellin.retrieval.RetrievalCandidateGenerator`, and `cellin.ranking.WeightedRanker`
 - Dreaming: `cellin.dreaming.DreamRunner` plus the built-in deduplication, abstraction, and contradiction-repair strategies
