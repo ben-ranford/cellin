@@ -215,6 +215,14 @@ class MemoryBundle:
 
 
 @dataclass(slots=True)
+class VectorMatch:
+    """A single vector retrieval match."""
+
+    memory_id: str
+    score: float
+
+
+@dataclass(slots=True)
 class TraceEvent:
     """Structured runtime trace data."""
 

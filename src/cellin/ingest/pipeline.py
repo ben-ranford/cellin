@@ -16,10 +16,10 @@ from cellin.core import (
     MemoryStore,
     Modality,
     Provenance,
+    VectorStore,
 )
 from cellin.ingest.adapters import EnvelopeAdapter, built_in_adapters
 from cellin.ingest.envelope import ArtifactEnvelope, IngestionBatchResult
-from cellin.stores.vector_index import InMemoryVectorIndex
 
 
 @dataclass(slots=True)
@@ -28,7 +28,7 @@ class CanonicalIngestor:
 
     graph_store: GraphStore
     memory_store: MemoryStore
-    vector_index: InMemoryVectorIndex
+    vector_store: VectorStore
     adapters: Mapping[Modality, EnvelopeAdapter]
 
     @classmethod
@@ -37,8 +37,15 @@ class CanonicalIngestor:
         *,
         graph_store: GraphStore,
         memory_store: MemoryStore,
-        vector_index: InMemoryVectorIndex,
+        vector_store: VectorStore | None = None,
+        vector_index: VectorStore | None = None,
     ) -> CanonicalIngestor:
+        resolved_vector_store = vector_store if vector_store is not None else vector_index
+        if resolved_vector_store is None:
+            raise TypeError(
+                "CanonicalIngestor.with_built_in_adapters requires "
+                "`vector_store` or legacy `vector_index`."
+            )
         adapters = built_in_adapters()
         adapter_map = {
             Modality.TEXT: adapters[0],
@@ -50,7 +57,7 @@ class CanonicalIngestor:
         return cls(
             graph_store=graph_store,
             memory_store=memory_store,
-            vector_index=vector_index,
+            vector_store=resolved_vector_store,
             adapters=adapter_map,
         )
 
@@ -60,7 +67,7 @@ class CanonicalIngestor:
         memories = tuple(self._artifact_to_memory(artifact) for artifact in artifacts)
         self._persist_memories(memories)
         for memory in memories:
-            self.vector_index.upsert(memory.memory_id, memory.text)
+            self.vector_store.upsert(memory.memory_id, memory.text)
         return memories
 
     def ingest_envelopes(self, envelopes: Sequence[ArtifactEnvelope]) -> IngestionBatchResult:

@@ -21,6 +21,7 @@ from cellin.core.contracts import (
     Retriever,
     RuntimeConfig,
     TraceSink,
+    VectorStore,
 )
 from cellin.core.models import (
     Artifact,
@@ -43,6 +44,7 @@ from cellin.core.models import (
     ScheduledDreamRun,
     ScoredMemory,
     TraceEvent,
+    VectorMatch,
 )
 
 __all__ = [
@@ -86,4 +88,6 @@ __all__ = [
     "ScoredMemory",
     "TraceEvent",
     "TraceSink",
+    "VectorMatch",
+    "VectorStore",
 ]

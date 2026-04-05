@@ -144,10 +144,16 @@ class _SQLiteBackend:
 
     def __init__(self, database_path: str) -> None:
         self.database_path = database_path
+        self._ensure_parent_directory()
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.database_path)
+
+    def _ensure_parent_directory(self) -> None:
+        if self.database_path == ":memory:":
+            return
+        Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
 
     def _initialize(self) -> None:
         with closing(self._connect()) as connection, connection:

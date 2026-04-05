@@ -22,6 +22,7 @@ from cellin.core.models import (
     ScheduledDreamRun,
     ScoredMemory,
     TraceEvent,
+    VectorMatch,
 )
 
 
@@ -220,3 +221,13 @@ class TraceSink(Protocol):
 
     def record(self, event: TraceEvent) -> None:
         """Record a trace event."""
+
+
+class VectorStore(Protocol):
+    """Vector indexing primitives for memory and representation retrieval."""
+
+    def upsert(self, memory_id: str, text: str) -> None:
+        """Add or update an indexed vector for a memory id."""
+
+    def search(self, query: str, *, limit: int = 5) -> Sequence[VectorMatch]:
+        """Return matching memory ids and scores."""

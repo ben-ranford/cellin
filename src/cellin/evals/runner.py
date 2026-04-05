@@ -30,7 +30,7 @@ from cellin.evals.retrieval_benchmarks import seeded_benchmark_cases
 from cellin.ingest import CanonicalIngestor
 from cellin.ranking import WeightedRanker, get_weight_profile
 from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
-from cellin.stores import InMemoryVectorIndex, SQLiteGraphStore, SQLiteMemoryStore
+from cellin.runtime.storage import StorageConfig, build_storage_bundle
 
 
 def _json_float_map(values: dict[str, float]) -> dict[str, JSONValue]:
@@ -177,16 +177,15 @@ def _project_edges() -> tuple[MemoryEdge, ...]:
 def _run_ingest_case() -> EvaluationCaseResult:
     with TemporaryDirectory() as directory:
         database_path = Path(directory) / "cellin.sqlite"
-        graph_store = SQLiteGraphStore(str(database_path))
-        memory_store = SQLiteMemoryStore(str(database_path))
-        vector_index = InMemoryVectorIndex()
+        storage = StorageConfig.with_sqlite_preset(str(database_path))
+        bundle = build_storage_bundle(storage, workspace_root=Path(directory))
         ingestor = CanonicalIngestor.with_built_in_adapters(
-            graph_store=graph_store,
-            memory_store=memory_store,
-            vector_index=vector_index,
+            graph_store=bundle.graph_store,
+            memory_store=bundle.memory_store,
+            vector_store=bundle.vector_store,
         )
         result = ingestor.ingest_envelopes(load_envelope_corpus("multimodal_artifacts"))
-        vector_results = vector_index.search("memory graph retrieval pipeline", limit=1)
+        vector_results = bundle.vector_store.search("memory graph retrieval pipeline", limit=1)
         memory_count = len(result.memories)
         edge_count = len(result.edges)
         metrics = {
