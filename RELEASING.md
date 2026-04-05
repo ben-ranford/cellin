@@ -1,11 +1,11 @@
 # Releasing
 
-Cellin uses a semver library release model with an automated stable channel and a manual prerelease channel.
+Cellin uses a semver library release model with an automated stable channel, an automated rolling preview channel, and a manual release-candidate channel.
 
 ## Planning
 
 - Delivery planning stays on the calendar milestone train, for example `2026-04`.
-- Git tags use `vX.Y.Z` for stable releases and `vX.Y.ZrcN`, `vX.Y.ZbN`, or `vX.Y.ZaN` for prereleases.
+- Git tags use `vX.Y.Z` for stable releases, `vX.Y.Z.devN` for rolling previews, and `vX.Y.ZrcN` for manual release candidates.
 - Python package versions use the same value without the leading `v`.
 - Use `release-candidate` for work intended for the next cut and `release-blocker` for issues that must land before a stable release.
 - Stable semver increments are inferred from Conventional Commit types in merged PR titles and commits:
@@ -37,14 +37,25 @@ Stable library releases are managed by `release-please` and publish to both GitH
 
 If `v0.1.1` has not been published yet, cut that bootstrap release manually before relying on `release-please` for the next stable version.
 
-## Prerelease Path
+## Rolling Preview Path
 
-Prereleases are workflow-dispatch driven through `.github/workflows/rolling-release.yml`.
+Rolling previews are triggered automatically by pushes to `main` through `.github/workflows/rolling-release.yml`.
 
-1. Commit a prerelease package version such as `0.2.0rc1` on the target branch or release branch.
+1. Merge a change to `main`.
+2. The rolling-release workflow skips stable release commits from `release-please`, then resolves the latest stable tag plus the merged commit history into the next preview base version.
+3. The workflow stamps a unique PEP 440 development version such as `0.2.1.dev123456701` into the checkout for that run only.
+4. It runs `make release-smoke`, publishes a GitHub prerelease tagged `vX.Y.Z.devN`, and uploads the package to PyPI through the `pypi-prerelease` environment.
+
+Rolling previews intentionally do not change `src/cellin/__about__.py` on `main`; the committed version remains the stable line that `release-please` manages.
+
+## Release-Candidate Path
+
+Release candidates are workflow-dispatch driven through `.github/workflows/rolling-release.yml`.
+
+1. Commit a release-candidate package version such as `0.2.1rc1` on a release branch or other target ref.
 2. Open the `rolling-release` workflow in GitHub Actions.
-3. Provide the same prerelease version without the leading `v`, for example `0.2.0rc1`.
-4. Provide the `target_ref` to release from, usually `main` or a release branch.
+3. Provide the same candidate version without the leading `v`, for example `0.2.1rc1`.
+4. Provide the `target_ref` to release from.
 5. The workflow validates that the input matches the committed package version, then publishes a GitHub prerelease and the package distributions to PyPI.
 
 ## Trusted Publishing Setup
@@ -70,7 +81,7 @@ Configure these trusted publishers on PyPI before the first live publish:
   - repository: `ben-ranford/cellin`
   - workflow: `.github/workflows/release.yml`
   - environment: `pypi`
-- prerelease publisher:
+- preview and release-candidate publisher:
   - repository: `ben-ranford/cellin`
   - workflow: `.github/workflows/rolling-release.yml`
   - environment: `pypi-prerelease`
