@@ -36,7 +36,7 @@ jobs:
       - name: Sync dependencies
         run: python -m uv sync --dev --frozen
 
-      - name: Run CI target
+      - name: Run CI target (verify + docs + version-check)
         run: make ci
 
       - name: Upload smoke eval report

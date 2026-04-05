@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from cellin.__about__ import __version__
 from cellin.core.contracts import Capability, PluginContext, PluginManifest
 from cellin.core.models import TraceEvent
 
@@ -18,7 +19,7 @@ class InMemoryTraceSinkPlugin:
 
     manifest = PluginManifest(
         plugin_id="in-memory-trace-sink",
-        version="0.1.0",
+        version=__version__,
         capabilities=(Capability.TRACE_SINK,),
         display_name="In-memory trace sink",
         description="Stores trace events in memory for tests and local development.",
