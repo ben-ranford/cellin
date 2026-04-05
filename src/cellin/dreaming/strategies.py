@@ -352,13 +352,14 @@ class AbstractionDreamStrategy:
             if len(members) < 2 or topic in existing_summaries:
                 continue
 
+            ordered_members = tuple(
+                sorted(members, key=lambda item: item.salience_score, reverse=True)
+            )
+            summary_text = _summary_text(topic, ordered_members)
             summary_memory = MemoryAtom(
                 memory_id=f"dream-{topic}-{when.strftime('%Y%m%d%H%M%S')}",
                 kind=MemoryKind.DREAM,
-                text=_summary_text(
-                    topic,
-                    tuple(sorted(members, key=lambda item: item.salience_score, reverse=True)),
-                ),
+                text=summary_text,
                 provenance=Provenance(source_id=self.strategy_name, source_type="dream"),
                 modality=Modality.TEXT,
                 created_at=when,
@@ -369,7 +370,7 @@ class AbstractionDreamStrategy:
                     "topic": topic,
                     "dream_strategy": self.strategy_name,
                     "summary_for": [memory.memory_id for memory in members],
-                    "token_count": len(_summary_text(topic, tuple(members)).split()),
+                    "token_count": len(summary_text.split()),
                 },
             )
             memory_store.put(summary_memory)
