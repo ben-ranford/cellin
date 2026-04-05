@@ -8,10 +8,16 @@ from typing import Literal, Protocol, cast
 
 from cellin.core import GraphStore, MemoryStore, VectorStore
 from cellin.stores import (
+    DuckDBGraphStore,
+    DuckDBMemoryStore,
     InMemoryGraphStore,
     InMemoryMemoryStore,
     InMemoryVectorIndex,
+    MySQLGraphStore,
+    MySQLMemoryStore,
     PGVectorStore,
+    PostgreSQLGraphStore,
+    PostgreSQLMemoryStore,
     SQLiteGraphStore,
     SQLiteMemoryStore,
     SQLiteVecStore,
@@ -135,6 +141,78 @@ def _build_sqlite_graph_store(
     return SQLiteGraphStore(database_path)
 
 
+def _build_duckdb_memory_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> MemoryStore:
+    database_path = _resolve_database_path(
+        config.database_path,
+        workspace_root=workspace_root,
+    )
+    return DuckDBMemoryStore(database_path)
+
+
+def _build_duckdb_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    database_path = _resolve_database_path(
+        config.database_path,
+        workspace_root=workspace_root,
+    )
+    return DuckDBGraphStore(database_path)
+
+
+def _build_postgresql_memory_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> MemoryStore:
+    del workspace_root
+    connection_string = config.database_path
+    if not connection_string:
+        raise StorageBackendError("postgresql backend requires a connection string")
+    return PostgreSQLMemoryStore(connection_string)
+
+
+def _build_postgresql_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    del workspace_root
+    connection_string = config.database_path
+    if not connection_string:
+        raise StorageBackendError("postgresql backend requires a connection string")
+    return PostgreSQLGraphStore(connection_string)
+
+
+def _build_mysql_memory_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> MemoryStore:
+    del workspace_root
+    connection_string = config.database_path
+    if not connection_string:
+        raise StorageBackendError("mysql backend requires a connection string")
+    return MySQLMemoryStore(connection_string)
+
+
+def _build_mysql_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    del workspace_root
+    connection_string = config.database_path
+    if not connection_string:
+        raise StorageBackendError("mysql backend requires a connection string")
+    return MySQLGraphStore(connection_string)
+
+
 def _build_in_memory_memory_store(
     config: StorageBackendConfig,
     *,
@@ -187,13 +265,19 @@ def _build_pgvector_store(
 
 
 _MEMORY_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
+    "duckdb": _build_duckdb_memory_store,
+    "mysql": _build_mysql_memory_store,
     "sqlite": _build_sqlite_memory_store,
+    "postgresql": _build_postgresql_memory_store,
     "in_memory": _build_in_memory_memory_store,
 }
 
 
 _GRAPH_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
+    "duckdb": _build_duckdb_graph_store,
+    "mysql": _build_mysql_graph_store,
     "sqlite": _build_sqlite_graph_store,
+    "postgresql": _build_postgresql_graph_store,
     "in_memory": _build_in_memory_graph_store,
 }
 

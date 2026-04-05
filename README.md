@@ -67,6 +67,38 @@ For an explicit SQLite preset, set:
 }
 ```
 
+For additional SQL-backed presets, install optional dependencies as needed:
+
+```bash
+python3 -m pip install cellin[duckdb]
+python3 -m pip install cellin[postgresql]
+python3 -m pip install cellin[mysql]
+python3 -m pip install cellin[sql-backends]
+```
+
+Use `duckdb` to point both roles at a local DB file:
+
+```json
+{
+  "memory": { "backend": "duckdb", "database_path": "cellin.duckdb" },
+  "graph": { "backend": "duckdb", "database_path": "cellin.duckdb" }
+}
+```
+
+Use `postgresql` and `mysql` with connection strings:
+
+```json
+{
+  "memory": { "backend": "postgresql", "database_path": "postgresql://user:pass@host:5432/db" },
+  "graph": { "backend": "postgresql", "database_path": "postgresql://user:pass@host:5432/db" }
+}
+
+{
+  "memory": { "backend": "mysql", "database_path": "mysql://user:pass@host:3306/db" },
+  "graph": { "backend": "mysql", "database_path": "mysql://user:pass@host:3306/db" }
+}
+```
+
 
 ## Primary surfaces
 
