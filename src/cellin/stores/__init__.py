@@ -1,5 +1,6 @@
 """Local persistence primitives for Cellin."""
 
+from cellin.stores.graph_backends import ArangoDBGraphStore, MemgraphGraphStore, Neo4jGraphStore
 from cellin.stores.in_memory import InMemoryGraphStore, InMemoryMemoryStore
 from cellin.stores.milvus import MilvusVectorStore
 from cellin.stores.mongodb import MongoDBGraphStore, MongoDBMemoryStore
@@ -22,17 +23,20 @@ from cellin.stores.vector_index import InMemoryVectorIndex, SearchResult
 from cellin.stores.weaviate import WeaviateVectorStore
 
 __all__ = [
+    "ArangoDBGraphStore",
     "InMemoryGraphStore",
     "InMemoryMemoryStore",
     "InMemoryVectorIndex",
     "DuckDBGraphStore",
     "DuckDBMemoryStore",
+    "MemgraphGraphStore",
     "MySQLGraphStore",
     "MySQLMemoryStore",
     "PostgreSQLGraphStore",
     "PostgreSQLMemoryStore",
     "MongoDBGraphStore",
     "MongoDBMemoryStore",
+    "Neo4jGraphStore",
     "SearchResult",
     "PGVectorStore",
     "PineconeVectorStore",

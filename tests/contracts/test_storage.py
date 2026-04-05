@@ -15,14 +15,17 @@ from cellin.runtime.storage import (
     build_storage_bundle,
 )
 from cellin.stores import (
+    ArangoDBGraphStore,
     DuckDBGraphStore,
     DuckDBMemoryStore,
     MilvusVectorStore,
+    MemgraphGraphStore,
     MongoDBGraphStore,
     MongoDBMemoryStore,
     MySQLGraphStore,
     MySQLMemoryStore,
     PineconeVectorStore,
+    Neo4jGraphStore,
     PostgreSQLGraphStore,
     PostgreSQLMemoryStore,
     QdrantVectorStore,
@@ -454,6 +457,62 @@ def test_build_storage_bundle_rejects_redis_without_connection_string(tmp_path: 
 
     with pytest.raises(StorageBackendError, match="redis backend requires a connection string"):
         build_storage_bundle(config, workspace_root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "backend_name,graph_store_class",
+    [
+        ("neo4j", Neo4jGraphStore),
+        ("memgraph", MemgraphGraphStore),
+        ("arangodb", ArangoDBGraphStore),
+    ],
+)
+def test_build_storage_bundle_resolves_graph_native_backends(
+    backend_name: str,
+    graph_store_class: type,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class _FakeGraphStore(graph_store_class):
+        def __init__(self, connection_string: str) -> None:
+            self._connection_string = connection_string
+
+    monkeypatch.setattr(
+        f"cellin.runtime.storage.{graph_store_class.__name__}",
+        _FakeGraphStore,
+    )
+    bundle = build_storage_bundle(
+        StorageConfig(
+            memory=StorageBackendConfig("in_memory"),
+            graph=StorageBackendConfig(backend_name, f"{backend_name}://cellin/test"),
+            vector=StorageBackendConfig("in_memory_vector_index"),
+            representation=StorageBackendConfig("in_memory_vector_index"),
+        ),
+        workspace_root=tmp_path,
+    )
+
+    assert isinstance(bundle.graph_store, _FakeGraphStore)
+    assert bundle.graph_store._connection_string == f"{backend_name}://cellin/test"
+
+
+@pytest.mark.parametrize("backend_name", ["neo4j", "memgraph", "arangodb"])
+def test_build_storage_bundle_rejects_graph_native_backends_without_connection_string(
+    backend_name: str,
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        StorageBackendError,
+        match=f"{backend_name} backend requires a connection string",
+    ):
+        build_storage_bundle(
+            StorageConfig(
+                memory=StorageBackendConfig("in_memory"),
+                graph=StorageBackendConfig(backend_name),
+                vector=StorageBackendConfig("in_memory_vector_index"),
+                representation=StorageBackendConfig("in_memory_vector_index"),
+            ),
+            workspace_root=tmp_path,
+        )
 
 
 def test_load_workspace_defaults_role_specific_graph_memory_path_when_missing(

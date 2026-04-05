@@ -129,6 +129,31 @@ MongoDB stores whole memory and edge documents and preserves archived entries as
 document payloads. Redis stores JSON payloads per key and also preserves archived entries as
 tombstones, filtering them from neighbor and edge listing reads rather than hard-deleting them.
 
+For graph-native backends, install the optional dependencies you need:
+
+```bash
+python3 -m pip install cellin[neo4j]
+python3 -m pip install cellin[memgraph]
+python3 -m pip install cellin[arangodb]
+python3 -m pip install cellin[graph-backends]
+```
+
+Use `neo4j`, `memgraph`, or `arangodb` for the graph role while keeping memory storage separate if
+you prefer:
+
+```json
+{
+  "memory": { "backend": "sqlite", "database_path": "cellin.sqlite" },
+  "graph": { "backend": "neo4j", "database_path": "bolt://user:pass@host:7687" }
+}
+```
+
+Graph-native stores persist edge relationships plus graph-local memory payload snapshots. When
+`GraphStore.get_memory()` is asked for a node that only exists as a placeholder created during edge
+upserts, it returns `None` and retrieval falls back to the configured memory store as the source of
+truth. That keeps mixed deployments working without caller changes while making the graph-local
+snapshot behavior explicit.
+
 
 ## Primary surfaces
 
