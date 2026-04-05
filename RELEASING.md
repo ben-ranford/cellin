@@ -1,6 +1,6 @@
 # Releasing
 
-Cellin uses a semver library release model with a stable tag channel and a manual prerelease channel.
+Cellin uses a semver library release model with an automated stable channel and a manual prerelease channel.
 
 ## Planning
 
@@ -8,6 +8,10 @@ Cellin uses a semver library release model with a stable tag channel and a manua
 - Git tags use `vX.Y.Z` for stable releases and `vX.Y.ZrcN`, `vX.Y.ZbN`, or `vX.Y.ZaN` for prereleases.
 - Python package versions use the same value without the leading `v`.
 - Use `release-candidate` for work intended for the next cut and `release-blocker` for issues that must land before a stable release.
+- Stable semver increments are inferred from Conventional Commit types in merged PR titles and commits:
+  - `fix:` maps to a patch release
+  - `feat:` maps to a minor release
+  - `!` or `BREAKING CHANGE:` maps to a major release
 
 ## Local Validation
 
@@ -22,13 +26,16 @@ Run these commands before creating or approving a release:
 
 ## Stable Release Path
 
-Stable library releases are tag-driven and publish to both GitHub Releases and PyPI.
+Stable library releases are managed by `release-please` and publish to both GitHub Releases and PyPI.
 
-1. Ensure the target commit is on `main`.
-2. Create and push a semver tag such as `v0.1.0`.
-3. GitHub Actions runs `.github/workflows/release.yml`.
-4. The workflow validates that the tag matches the package version, runs `make release-smoke`, and uploads wheel plus sdist artifacts.
-5. The workflow publishes a GitHub Release with generated notes and publishes the package distributions to PyPI.
+1. Merge conventional commits to `main`.
+2. GitHub Actions runs `.github/workflows/release-please.yml`.
+3. `release-please` opens or updates a release PR that contains the semver bump, changelog entries, and version file updates.
+4. Merge the release PR after `make release-smoke` is green.
+5. `release-please` tags the merge commit, creates the GitHub Release, and triggers `.github/workflows/release.yml`.
+6. The release workflow validates that the tag matches the package version, runs `make release-smoke`, uploads the wheel plus sdist artifacts, attaches them to the GitHub Release, and publishes the package to PyPI.
+
+If `v0.1.1` has not been published yet, cut that bootstrap release manually before relying on `release-please` for the next stable version.
 
 ## Prerelease Path
 
@@ -41,6 +48,19 @@ Prereleases are workflow-dispatch driven through `.github/workflows/rolling-rele
 5. The workflow validates that the input matches the committed package version, then publishes a GitHub prerelease and the package distributions to PyPI.
 
 ## Trusted Publishing Setup
+
+Cellin's release automation uses both GitHub and PyPI credentials:
+
+- `RELEASE_PLEASE_TOKEN` in GitHub Actions for automated release PR creation, tagging, and downstream workflow triggering
+- PyPI trusted publishing with GitHub OIDC for package upload
+
+Configure `RELEASE_PLEASE_TOKEN` as a repository secret before enabling automated stable releases. Use a dedicated fine-grained GitHub token for `ben-ranford/cellin` with:
+
+- repository permissions: `Contents` write, `Pull requests` write, `Issues` write, `Metadata` read
+
+If you use a classic personal access token instead, it needs `repo` and `workflow`.
+
+The default `GITHUB_TOKEN` is not sufficient here because release PRs and tags created by that token do not trigger the downstream release workflow.
 
 Cellin's publish jobs are designed for PyPI trusted publishing with GitHub OIDC.
 
@@ -61,6 +81,7 @@ The GitHub repository does not need long-lived `PYPI_API_TOKEN` secrets when tru
 
 The package metadata is built from `pyproject.toml`, `LICENSE`, and `src/cellin/__about__.py`.
 Use `src/cellin/__about__.py` as the single source of truth for the package version.
+The version assignment includes the inline `# x-release-please-version` annotation so `release-please` can update it automatically.
 
 ## Remote Enforcement
 

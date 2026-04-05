@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "32ab53bac5c57f5b925dbe60fd414dcb6634b34f",
+  "skip-labeling": true,
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "cellin",
+      "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "src/cellin/__about__.py"
+      ]
+    }
+  }
+}
