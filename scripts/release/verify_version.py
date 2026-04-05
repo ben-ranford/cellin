@@ -87,7 +87,7 @@ def main() -> int:
     if args.tag is not None:
         if not args.tag.startswith("v"):
             raise ValueError(f"Tags must be prefixed with 'v', found {args.tag!r}")
-        if args.tag[1:] != version:
+        if args.tag.removeprefix("v") != version:
             raise ValueError(f"Tag {args.tag!r} does not match package version {version!r}")
 
     if args.print_version:
