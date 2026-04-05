@@ -10,6 +10,7 @@ from pytest import CaptureFixture
 
 from cellin import __version__
 from cellin.cli import main
+from cellin.cli.config import DEFAULT_CONFIG_FILENAME
 
 
 def _copy_example_input(target: Path) -> Path:
@@ -21,7 +22,7 @@ def _copy_example_input(target: Path) -> Path:
 
 def test_cli_end_to_end_flow(tmp_path: Path, capsys: CaptureFixture[str]) -> None:
     workspace = tmp_path / "workspace"
-    config_path = workspace / "cellin.json"
+    config_path = workspace / DEFAULT_CONFIG_FILENAME
     input_path = _copy_example_input(tmp_path)
     eval_output = tmp_path / "smoke.json"
 
@@ -97,7 +98,7 @@ def test_trace_inspect_zero_and_negative_limits_emit_no_entries(
     tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     workspace = tmp_path / "workspace"
-    config_path = workspace / "cellin.json"
+    config_path = workspace / DEFAULT_CONFIG_FILENAME
     input_path = _copy_example_input(tmp_path)
 
     assert main(["init", "--workspace", str(workspace)]) == 0

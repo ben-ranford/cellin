@@ -20,6 +20,8 @@ from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
 from cellin.runtime import InMemoryTraceSinkPlugin, PluginRegistry
 from cellin.stores import InMemoryVectorIndex, SQLiteGraphStore, SQLiteMemoryStore
 
+TRACE_INSPECT_SUCCESS_EXIT_CODE = 0
+
 
 def _load_envelopes(input_path: Path) -> tuple[ArtifactEnvelope, ...]:
     raw = json.loads(input_path.read_text(encoding="utf-8"))
@@ -191,14 +193,14 @@ def cmd_trace_inspect(args: argparse.Namespace) -> int:
     events = read_traces(load_workspace(Path(args.config)), limit=args.limit)
     if not events:
         print("no trace events recorded")
-        return 0
-    for event in events:
-        print(
-            f"timestamp={event.timestamp.isoformat()} "
-            f"name={event.name} "
-            f"payload={json.dumps(event.payload, sort_keys=True)}"
-        )
-    return 0
+    else:
+        for event in events:
+            print(
+                f"timestamp={event.timestamp.isoformat()} "
+                f"name={event.name} "
+                f"payload={json.dumps(event.payload, sort_keys=True)}"
+            )
+    return TRACE_INSPECT_SUCCESS_EXIT_CODE
 
 
 def build_parser() -> argparse.ArgumentParser:
