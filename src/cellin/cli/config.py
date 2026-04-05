@@ -91,6 +91,8 @@ def append_trace(
 def read_traces(workspace: ResolvedWorkspace, *, limit: int) -> tuple[TraceEvent, ...]:
     """Read the last N trace events from the workspace trace log."""
 
+    if limit <= 0:
+        return ()
     if not workspace.trace_path.exists():
         return ()
 
