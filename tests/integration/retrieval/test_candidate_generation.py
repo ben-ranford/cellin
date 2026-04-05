@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import create_autospec
 
 from cellin.core import (
     DecayState,
@@ -17,49 +18,6 @@ from cellin.core import (
     RetrievalStats,
 )
 from cellin.retrieval import RetrievalCandidateGenerator
-
-
-class InMemoryMemoryStore(MemoryStore):
-    def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-
-    def put(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return tuple(self._memories.values())
-
-
-class InMemoryGraphStore(GraphStore):
-    def __init__(
-        self,
-        memories: tuple[MemoryAtom, ...],
-        edges: tuple[MemoryEdge, ...],
-    ) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-        self._edges = edges
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._edges = (*self._edges, edge)
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return tuple(
-            edge
-            for edge in self._edges
-            if edge.source_id == memory_id or edge.target_id == memory_id
-        )
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return self._edges
 
 
 def _memory(
@@ -96,6 +54,27 @@ def _edge(edge_id: str, source_id: str, target_id: str) -> MemoryEdge:
     )
 
 
+def _memory_store(memories: tuple[MemoryAtom, ...]) -> MemoryStore:
+    indexed = {memory.memory_id: memory for memory in memories}
+    store = create_autospec(MemoryStore, instance=True)
+    store.list.return_value = memories
+    store.get.side_effect = indexed.get
+    return store
+
+
+def _graph_store(
+    memories: tuple[MemoryAtom, ...],
+    edges: tuple[MemoryEdge, ...],
+) -> GraphStore:
+    indexed = {memory.memory_id: memory for memory in memories}
+    graph = create_autospec(GraphStore, instance=True)
+    graph.get_memory.side_effect = indexed.get
+    graph.neighbors.side_effect = lambda memory_id: tuple(
+        edge for edge in edges if edge.source_id == memory_id or edge.target_id == memory_id
+    )
+    return graph
+
+
 def test_collect_filters_archived_memories_and_archived_graph_neighbors() -> None:
     memories = (
         _memory("seed", "Atlas retrieval graph"),
@@ -109,8 +88,8 @@ def test_collect_filters_archived_memories_and_archived_graph_neighbors() -> Non
         _edge("seed-to-active", "seed", "active-neighbor"),
     )
     generator = RetrievalCandidateGenerator(
-        memory_store=InMemoryMemoryStore(memories),
-        graph_store=InMemoryGraphStore(memories, edges),
+        memory_store=_memory_store(memories),
+        graph_store=_graph_store(memories, edges),
     )
 
     collected = generator.collect("Atlas retrieval", limit=4)
@@ -135,8 +114,8 @@ def test_collect_orders_graph_expansions_by_ranked_seed_not_insertion_order() ->
         _edge("seed-to-higher", "seed", "higher-neighbor"),
     )
     generator = RetrievalCandidateGenerator(
-        memory_store=InMemoryMemoryStore(memories),
-        graph_store=InMemoryGraphStore(memories, edges),
+        memory_store=_memory_store(memories),
+        graph_store=_graph_store(memories, edges),
         lexical_limit=1,
     )
 
@@ -159,7 +138,7 @@ def test_collect_fallback_and_limit_semantics_when_no_lexical_seed_matches() -> 
         _memory("m4", "fourth memory"),
     )
     generator = RetrievalCandidateGenerator(
-        memory_store=InMemoryMemoryStore(memories),
+        memory_store=_memory_store(memories),
         graph_store=None,
         lexical_limit=2,
     )
@@ -175,7 +154,7 @@ def test_collect_fallback_and_limit_semantics_when_no_lexical_seed_matches() -> 
 def test_collect_returns_empty_when_limit_is_zero() -> None:
     memories = (_memory("seed", "atlas retrieval graph"),)
     generator = RetrievalCandidateGenerator(
-        memory_store=InMemoryMemoryStore(memories),
+        memory_store=_memory_store(memories),
         graph_store=None,
     )
 
