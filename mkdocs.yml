@@ -9,4 +9,3 @@ nav:
   - Home: index.md
   - Architecture: architecture/README.md
   - Evals: evals/README.md
-  - Plan: pluggable-evals-rigor-plan.md
