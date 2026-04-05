@@ -1,7 +1,7 @@
 # cellin
 
-[![PyPI](https://img.shields.io/pypi/v/cellin)](https://pypi.org/project/cellin/)
-[![Release](https://img.shields.io/github/v/release/ben-ranford/cellin)](https://github.com/ben-ranford/cellin/releases)
+[![PyPI Version](https://img.shields.io/pypi/v/cellin)](https://pypi.org/project/cellin/)
+[![Release Passing](https://github.com/ben-ranford/cellin/actions/workflows/release.yml/badge.svg)](https://github.com/ben-ranford/cellin/actions/workflows/release.yml)
 
 Cellin builds long-lived multimodal memory, dreams over it to consolidate ideas, and
 retrieves context with transparent weighted ranking.
