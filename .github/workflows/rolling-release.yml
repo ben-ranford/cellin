@@ -53,6 +53,7 @@ jobs:
               --run-id "${GITHUB_RUN_ID}" \
               --run-attempt "${GITHUB_RUN_ATTEMPT}")"
             python -m uv run python scripts/release/set_version.py --version "${resolved_version}"
+            python -m uv pip install --python .venv/bin/python --reinstall -e .
             python -m uv run python scripts/release/verify_version.py \
               --expect-version "${resolved_version}" \
               --release-kind preview
