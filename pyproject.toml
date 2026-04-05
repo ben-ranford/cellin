@@ -45,6 +45,12 @@ dev = [
   "twine>=6.1.0",
 ]
 
+[project.optional-dependencies]
+duckdb = ["duckdb"]
+mysql = ["mysql-connector-python"]
+postgresql = ["psycopg"]
+sql-backends = ["duckdb", "psycopg", "mysql-connector-python"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/cellin"]
 
