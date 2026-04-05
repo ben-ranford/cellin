@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security issue privately
+    url: https://github.com/ben-ranford/cellin/security/advisories/new
+    about: Use a private security advisory instead of a public issue.

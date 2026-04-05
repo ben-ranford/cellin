@@ -1,6 +1,6 @@
 ## Summary
 
-Describe the problem and the intent of this change.
+Describe the bug and the intended behavior after this fix.
 
 ## Changes
 
@@ -20,14 +20,13 @@ Additional targeted validation:
 
 ## Risk and compatibility
 
-- Breaking changes:
+- User-visible behavior change:
 - Migration required:
-- Performance impact:
-- Security impact:
+- Backward-compatibility risk:
 
 ## Checklist
 
-- [ ] Tests or evals added or updated for behavior changes
-- [ ] Docs updated if user-facing behavior changed
+- [ ] Reproduction or regression coverage added or updated
+- [ ] Docs or examples updated if behavior changed
 - [ ] No unrelated changes included
 - [ ] Ready for review

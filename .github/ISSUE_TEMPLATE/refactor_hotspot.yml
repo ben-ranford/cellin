@@ -1,0 +1,49 @@
+name: Refactor hotspot
+description: Capture a verified maintainability hotspot or cleanup seam.
+title: "[Refactor]: "
+labels: ["refactor"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for hotspots backed by concrete evidence, not just a large file or a vague smell.
+
+  - type: textarea
+    id: hotspot
+    attributes:
+      label: Hotspot summary
+      description: Which file, module, or seam is costly to change?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence of change pain
+      description: Include churn, complexity, duplication, fan-in, or test-friction evidence.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: target
+    attributes:
+      label: Proposed refactor target
+      description: What narrower seam or ownership change would reduce the cost?
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What should not be expanded into this refactor?
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What will be simpler or safer after the refactor?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
