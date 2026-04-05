@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from importlib import metadata
 from typing import cast
 
@@ -23,12 +23,10 @@ def _ensure_plugin(candidate: object) -> Plugin:
 
 
 def _instantiate_plugin(loaded: object) -> Plugin:
-    candidate = loaded
-
-    if isinstance(loaded, type):
-        candidate = loaded()
-    elif callable(loaded) and not hasattr(loaded, "manifest"):
-        candidate = loaded()
+    should_instantiate = isinstance(loaded, type) or (
+        callable(loaded) and not hasattr(loaded, "manifest")
+    )
+    candidate = cast(Callable[[], object], loaded)() if should_instantiate else loaded
 
     return _ensure_plugin(candidate)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import pytest
@@ -55,9 +56,10 @@ class FakeEntryPoint:
 
     name: str
     group: str
+    loaded: object = InMemoryTraceSinkPlugin
 
-    def load(self) -> type[InMemoryTraceSinkPlugin]:
-        return InMemoryTraceSinkPlugin
+    def load(self) -> object:
+        return self.loaded
 
 
 class FakeEntryPoints(list[FakeEntryPoint]):
@@ -67,9 +69,35 @@ class FakeEntryPoints(list[FakeEntryPoint]):
         return [entry_point for entry_point in self if entry_point.group == group]
 
 
-def test_registry_loads_plugins_from_entry_points(monkeypatch: pytest.MonkeyPatch) -> None:
+def _class_entry_point_target() -> object:
+    return InMemoryTraceSinkPlugin
+
+
+def _factory_entry_point_target() -> object:
+    return lambda: InMemoryTraceSinkPlugin()
+
+
+def _instance_entry_point_target() -> object:
+    return InMemoryTraceSinkPlugin()
+
+
+@pytest.mark.parametrize(
+    "target_factory",
+    (
+        _class_entry_point_target,
+        _factory_entry_point_target,
+        _instance_entry_point_target,
+    ),
+    ids=("class", "factory", "instance"),
+)
+def test_registry_loads_plugins_from_entry_points(
+    monkeypatch: pytest.MonkeyPatch, target_factory: Callable[[], object]
+) -> None:
     def fake_entry_points() -> FakeEntryPoints:
-        return FakeEntryPoints([FakeEntryPoint(name="trace", group="cellin.plugins")])
+        loaded = target_factory()
+        return FakeEntryPoints(
+            [FakeEntryPoint(name="trace", group="cellin.plugins", loaded=loaded)]
+        )
 
     monkeypatch.setattr("cellin.runtime.registry.metadata.entry_points", fake_entry_points)
 
