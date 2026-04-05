@@ -28,7 +28,9 @@ The canonical checks are:
 ## Release Workflow
 
 - Stable releases are cut from semver tags such as `v0.1.0`.
+- Prerelease versions use semver-compatible PEP 440 syntax such as `0.2.0rc1`.
 - Manual prereleases are created through the GitHub Actions `rolling-release` workflow.
+- Run `make version-check` when you change the package version or prepare a release branch.
 - Run `make release-smoke` before you cut or approve a release-related change.
 - Use the guidance in `RELEASING.md` for tag naming, release channels, and artifact expectations.
 

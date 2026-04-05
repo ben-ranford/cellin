@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
+from cellin import __version__
 from cellin.cli.config import append_trace, init_workspace, load_workspace, read_traces
 from cellin.core import Modality
 from cellin.core.models import JSONValue
@@ -202,6 +203,7 @@ def cmd_trace_inspect(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Cellin local-first CLI")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init")

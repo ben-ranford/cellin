@@ -1,6 +1,9 @@
 UV ?= python3 -m uv
+TAG ?=
+EXPECT_VERSION ?=
+RELEASE_KIND ?= any
 
-.PHONY: bootstrap hooks fmt fmt-check lint typecheck test eval-smoke eval-full eval package package-smoke release-smoke verify ci docs
+.PHONY: bootstrap hooks fmt fmt-check lint typecheck test eval-smoke eval-full eval package package-smoke version-check release-smoke verify ci docs
 
 bootstrap:
 	$(UV) sync --dev
@@ -10,13 +13,13 @@ hooks:
 	$(UV) run lefthook install
 
 fmt:
-	$(UV) run ruff format src tests docs
+	$(UV) run ruff format src tests docs scripts
 
 fmt-check:
-	$(UV) run ruff format --check src tests docs
+	$(UV) run ruff format --check src tests docs scripts
 
 lint:
-	$(UV) run ruff check src tests docs
+	$(UV) run ruff check src tests docs scripts
 
 typecheck:
 	$(UV) run mypy src
@@ -39,15 +42,20 @@ package:
 package-smoke: package
 	$(UV) run twine check --strict dist/*
 	tmpdir=$$(mktemp -d); \
-	python3 -m venv "$$tmpdir/venv"; \
-	"$$tmpdir/venv/bin/pip" install --upgrade pip >/dev/null; \
-	"$$tmpdir/venv/bin/pip" install dist/*.whl >/dev/null; \
-	"$$tmpdir/venv/bin/cellin" plugin list | grep -q "in-memory-trace-sink"; \
-	rm -rf "$$tmpdir"
+		python3 -m venv "$$tmpdir/venv"; \
+		"$$tmpdir/venv/bin/pip" install --upgrade pip >/dev/null; \
+		"$$tmpdir/venv/bin/pip" install dist/*.whl >/dev/null; \
+		expected_version=$$(python3 scripts/release/verify_version.py --print-version); \
+		"$$tmpdir/venv/bin/cellin" --version | grep -q "$$expected_version"; \
+		"$$tmpdir/venv/bin/cellin" plugin list | grep -q "in-memory-trace-sink"; \
+		rm -rf "$$tmpdir"
+
+version-check:
+	$(UV) run python scripts/release/verify_version.py $(if $(TAG),--tag $(TAG),) $(if $(EXPECT_VERSION),--expect-version $(EXPECT_VERSION),) --release-kind $(RELEASE_KIND)
 
 release-smoke: ci package-smoke
 
-verify: fmt-check lint typecheck test eval-smoke
+verify: fmt-check lint typecheck test eval-smoke version-check
 
 ci: verify docs
 

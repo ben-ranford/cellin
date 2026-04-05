@@ -4,23 +4,24 @@ name: rolling-release
   workflow_dispatch:
     inputs:
       version:
-        description: "Semver prerelease version without the leading v, for example 0.2.0-rc.1"
+        description: "PEP 440 prerelease version without the leading v, for example 0.2.0rc1"
         required: true
       target_ref:
         description: "Git ref to publish from when cutting a prerelease"
         required: false
         default: "main"
 
-permissions:
-  contents: write
-
 concurrency:
   group: rolling-release-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
-  rolling-release:
+  build-prerelease:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      package_version: ${{ steps.version.outputs.package_version }}
 
     steps:
       - name: Checkout target ref
@@ -39,6 +40,16 @@ jobs:
       - name: Sync dependencies
         run: python -m uv sync --dev --frozen
 
+      - name: Validate prerelease version
+        id: version
+        shell: bash
+        run: |
+          python -m uv run python scripts/release/verify_version.py \
+            --tag "v${{ inputs.version }}" \
+            --expect-version "${{ inputs.version }}" \
+            --release-kind prerelease
+          echo "package_version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+
       - name: Run release smoke
         run: make release-smoke
 
@@ -46,11 +57,31 @@ jobs:
         shell: bash
         run: shasum -a 256 dist/* > dist/SHA256SUMS.txt
 
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-dist-v${{ inputs.version }}
+          path: |
+            dist/*.tar.gz
+            dist/*.whl
+
       - name: Upload rolling release bundle
         uses: actions/upload-artifact@v7
         with:
           name: rolling-release-v${{ inputs.version }}
           path: dist/*
+
+  publish-github-prerelease:
+    needs: build-prerelease
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download rolling release bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: rolling-release-v${{ inputs.version }}
+          path: dist
 
       - name: Publish rolling prerelease
         env:
@@ -59,3 +90,21 @@ jobs:
           TARGET_REF: ${{ inputs.target_ref }}
         shell: bash
         run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes --target "$TARGET_REF" --prerelease
+
+  publish-pypi-prerelease:
+    needs: build-prerelease
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi-prerelease
+      url: https://pypi.org/p/cellin
+    steps:
+      - name: Download Python distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-dist-v${{ inputs.version }}
+          path: dist
+
+      - name: Publish prerelease distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
