@@ -50,13 +50,33 @@ duckdb = ["duckdb"]
 document-cache-backends = ["pymongo", "redis"]
 graph-backends = ["neo4j", "python-arango"]
 arangodb = ["python-arango"]
+milvus = ["pymilvus"]
 mongodb = ["pymongo"]
 memgraph = ["neo4j"]
 mysql = ["mysql-connector-python"]
 neo4j = ["neo4j"]
+pgvector = ["psycopg"]
+storage-backends = [
+  "duckdb",
+  "psycopg",
+  "mysql-connector-python",
+  "pymongo",
+  "redis",
+  "neo4j",
+  "python-arango",
+  "pinecone",
+  "qdrant-client",
+  "weaviate-client",
+  "pymilvus",
+]
+pinecone = ["pinecone"]
 postgresql = ["psycopg"]
+qdrant = ["qdrant-client"]
 redis = ["redis"]
+redis-vector = ["redis"]
 sql-backends = ["duckdb", "psycopg", "mysql-connector-python"]
+vector-backends = ["psycopg", "pinecone", "qdrant-client", "weaviate-client", "pymilvus", "redis"]
+weaviate = ["weaviate-client"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cellin"]

@@ -52,6 +52,7 @@ package-smoke: package
 		expected_version=$$(python3 scripts/release/verify_version.py --print-version); \
 		"$$tmpdir/venv/bin/cellin" --version | grep -q "$$expected_version"; \
 		"$$tmpdir/venv/bin/cellin" plugin list | grep -q "in-memory-trace-sink"; \
+		"$$tmpdir/venv/bin/cellin" storage list --role memory | grep -q "role=memory backend=in_memory"; \
 		rm -rf "$$tmpdir"
 
 version-check:
