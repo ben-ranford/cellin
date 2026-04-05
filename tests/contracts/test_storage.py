@@ -17,16 +17,21 @@ from cellin.runtime.storage import (
 from cellin.stores import (
     DuckDBGraphStore,
     DuckDBMemoryStore,
+    MilvusVectorStore,
     MongoDBGraphStore,
     MongoDBMemoryStore,
     MySQLGraphStore,
     MySQLMemoryStore,
+    PineconeVectorStore,
     PostgreSQLGraphStore,
     PostgreSQLMemoryStore,
+    QdrantVectorStore,
     RedisGraphStore,
     RedisMemoryStore,
+    RedisVectorStore,
     SQLiteMemoryStore,
     SQLiteVecStore,
+    WeaviateVectorStore,
 )
 
 
@@ -138,6 +143,75 @@ def test_build_storage_bundle_resolves_pgvector_backend(
 
     assert isinstance(bundle.vector_store, _FakePGVectorStore)
     assert bundle.vector_store.connection_string == "postgresql://cellin/test"
+
+
+@pytest.mark.parametrize(
+    ("backend_name", "backend_class"),
+    [
+        ("pinecone", PineconeVectorStore),
+        ("qdrant", QdrantVectorStore),
+        ("weaviate", WeaviateVectorStore),
+        ("milvus", MilvusVectorStore),
+        ("redis_vector", RedisVectorStore),
+    ],
+)
+def test_build_storage_bundle_resolves_remote_vector_backends(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    backend_name: str,
+    backend_class: type,
+) -> None:
+    class _FakeVectorStore:
+        def __init__(self, connection_string: str) -> None:
+            self.connection_string = connection_string
+
+        def upsert(self, memory_id: str, text: str) -> None:
+            del memory_id, text
+
+        def search(self, query: str, *, limit: int = 5) -> tuple[object, ...]:
+            del query, limit
+            return ()
+
+        def delete(self, memory_id: str) -> None:
+            del memory_id
+
+    monkeypatch.setattr(
+        f"cellin.runtime.storage.{backend_class.__name__}",
+        _FakeVectorStore,
+    )
+    connection_string = f"{backend_name}://localhost:1234/collection"
+    config = StorageConfig(
+        memory=StorageBackendConfig("in_memory"),
+        graph=StorageBackendConfig("in_memory"),
+        vector=StorageBackendConfig(backend_name, connection_string),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+    bundle = build_storage_bundle(config, workspace_root=tmp_path)
+
+    assert isinstance(bundle.vector_store, _FakeVectorStore)
+    assert bundle.vector_store.connection_string == connection_string
+
+
+@pytest.mark.parametrize(
+    "backend_name",
+    ["pinecone", "qdrant", "weaviate", "milvus", "redis_vector"],
+)
+def test_build_storage_bundle_rejects_remote_vector_backends_without_connection_string(
+    tmp_path: Path,
+    backend_name: str,
+) -> None:
+    config = StorageConfig(
+        memory=StorageBackendConfig("in_memory"),
+        graph=StorageBackendConfig("in_memory"),
+        vector=StorageBackendConfig(backend_name),
+        representation=StorageBackendConfig("in_memory_vector_index"),
+    )
+
+    with pytest.raises(
+        StorageBackendError,
+        match=f"{backend_name} backend requires a connection string",
+    ):
+        build_storage_bundle(config, workspace_root=tmp_path)
 
 
 def test_build_storage_bundle_resolves_duckdb_backends_and_backend_shares_storage(
