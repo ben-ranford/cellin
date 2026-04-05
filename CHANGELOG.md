@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1](https://github.com/ben-ranford/cellin/compare/v0.2.0...v0.2.1) (2026-04-05)
+
+
+### Bug Fixes
+
+* **release:** align release-please tag config ([#67](https://github.com/ben-ranford/cellin/issues/67)) ([fc09eb2](https://github.com/ben-ranford/cellin/commit/fc09eb2d1646e95ca1b1655cdde5310ec6abd335))
+
 ## [0.2.0](https://github.com/ben-ranford/cellin/compare/cellin-v0.1.1...cellin-v0.2.0) (2026-04-05)
 
 
