@@ -209,3 +209,72 @@ def test_bundle_respects_token_budget() -> None:
 
     assert len(bundle.memories) == 1
     assert bundle.memories[0].memory.memory_id == "atlas-arch"
+
+
+def test_bundle_returns_empty_when_top_k_one_candidate_is_oversized() -> None:
+    memories, edges = _seeded_memories()
+    memory_store = InMemoryMemoryStore(memories)
+    graph_store = InMemoryGraphStore(memories, edges)
+    profile = replace(get_weight_profile("balanced"), token_budget=7)
+    retriever = WeightedRetriever(
+        candidate_generator=RetrievalCandidateGenerator(memory_store, graph_store),
+        ranker=WeightedRanker(
+            profile=profile,
+            now_provider=lambda: datetime(2026, 4, 4, tzinfo=UTC),
+        ),
+        profile=profile,
+    )
+
+    bundle = retriever.retrieve(
+        "Atlas architecture uses a memory graph and weighted retrieval for planning.",
+        top_k=1,
+    )
+
+    assert bundle.memories == ()
+    assert bundle.total_score == 0.0
+    assert bundle.summary is None
+
+
+def test_bundle_skips_oversized_first_candidate_and_selects_in_budget_next() -> None:
+    now = datetime(2026, 4, 4, tzinfo=UTC)
+    memories = (
+        _memory(
+            "oversized-candidate",
+            "Atlas architecture weighted retrieval memory graph planning",
+            observed_at=now - timedelta(days=1),
+            salience=0.99,
+            trust=0.99,
+            access_count=9,
+            token_count=20,
+        ),
+        _memory(
+            "fits-budget",
+            "Atlas architecture weighted retrieval memory graph planning",
+            observed_at=now - timedelta(days=1),
+            salience=0.45,
+            trust=0.75,
+            access_count=0,
+            token_count=5,
+        ),
+    )
+    memory_store = InMemoryMemoryStore(memories)
+    graph_store = InMemoryGraphStore(memories, ())
+    profile = replace(get_weight_profile("balanced"), token_budget=6)
+    retriever = WeightedRetriever(
+        candidate_generator=RetrievalCandidateGenerator(memory_store, graph_store),
+        ranker=WeightedRanker(
+            profile=profile,
+            now_provider=lambda: now,
+        ),
+        profile=profile,
+    )
+
+    bundle = retriever.retrieve(
+        "Atlas architecture weighted retrieval memory graph planning",
+        top_k=2,
+    )
+
+    assert tuple(item.memory.memory_id for item in bundle.memories) == ("fits-budget",)
+    assert (
+        sum(item.memory.metadata["token_count"] for item in bundle.memories) <= profile.token_budget
+    )
