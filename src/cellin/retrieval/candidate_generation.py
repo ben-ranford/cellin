@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from cellin.core import GraphStore, MemoryAtom, MemoryStore
+from cellin.core import GraphStore, MemoryAtom, MemoryEdge, MemoryStore
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -43,49 +43,106 @@ class RetrievalCandidateGenerator:
     lexical_limit: int = 4
 
     def collect(self, query: str, *, limit: int) -> tuple[MemoryAtom, ...]:
-        memories = tuple(memory for memory in self.memory_store.list() if not memory.decay.archived)
+        memories = self._active_memories()
         if not memories:
             return ()
 
-        ranked_by_seed = sorted(
+        ranked_by_seed = self._rank_by_lexical_seed(query, memories)
+        seed_candidates = self._seed_candidates(query, ranked_by_seed, limit)
+        candidates = self._candidate_index(seed_candidates)
+        self._expand_graph_neighbors(seed_candidates, candidates, limit)
+        return self._assemble_ordered_candidates(ranked_by_seed, candidates, limit)
+
+    def _active_memories(self) -> tuple[MemoryAtom, ...]:
+        return tuple(memory for memory in self.memory_store.list() if not memory.decay.archived)
+
+    def _rank_by_lexical_seed(
+        self,
+        query: str,
+        memories: tuple[MemoryAtom, ...],
+    ) -> list[MemoryAtom]:
+        return sorted(
             memories,
             key=lambda memory: _lexical_seed_score(query, memory),
             reverse=True,
         )
-        seed_candidates = [
+
+    def _seed_candidates(
+        self,
+        query: str,
+        ranked_by_seed: list[MemoryAtom],
+        limit: int,
+    ) -> list[MemoryAtom]:
+        seeded = [
             _annotate_distance(memory, 0)
             for memory in ranked_by_seed[: self.lexical_limit]
             if _lexical_seed_score(query, memory) > 0.0
         ]
-        if not seed_candidates:
-            seed_candidates = [
-                _annotate_distance(memory, 0)
-                for memory in ranked_by_seed[: min(limit, self.lexical_limit)]
-            ]
+        if seeded:
+            return seeded
+        return self._fallback_seed_candidates(ranked_by_seed, limit)
 
-        candidates: dict[str, MemoryAtom] = {memory.memory_id: memory for memory in seed_candidates}
+    def _fallback_seed_candidates(
+        self,
+        ranked_by_seed: list[MemoryAtom],
+        limit: int,
+    ) -> list[MemoryAtom]:
+        return [
+            _annotate_distance(memory, 0)
+            for memory in ranked_by_seed[: min(limit, self.lexical_limit)]
+        ]
 
+    def _candidate_index(self, seed_candidates: list[MemoryAtom]) -> dict[str, MemoryAtom]:
+        return {memory.memory_id: memory for memory in seed_candidates}
+
+    def _expand_graph_neighbors(
+        self,
+        seed_candidates: list[MemoryAtom],
+        candidates: dict[str, MemoryAtom],
+        limit: int,
+    ) -> None:
+        if self.graph_store is None:
+            return
+
+        for seed in seed_candidates:
+            for edge in self.graph_store.neighbors(seed.memory_id):
+                neighbor = self._resolve_neighbor(seed.memory_id, edge, candidates)
+                if neighbor is None:
+                    continue
+
+                candidates[neighbor.memory_id] = _annotate_distance(neighbor, 1)
+                if len(candidates) >= limit:
+                    break
+
+    def _resolve_neighbor(
+        self,
+        seed_memory_id: str,
+        edge: MemoryEdge,
+        candidates: dict[str, MemoryAtom],
+    ) -> MemoryAtom | None:
+        neighbor_id = edge.target_id if edge.source_id == seed_memory_id else edge.source_id
+        if neighbor_id in candidates:
+            return None
+
+        neighbor = self._get_neighbor_memory(neighbor_id)
+        if neighbor is None or neighbor.decay.archived:
+            return None
+
+        return neighbor
+
+    def _get_neighbor_memory(self, neighbor_id: str) -> MemoryAtom | None:
         if self.graph_store is not None:
-            for seed in seed_candidates:
-                for edge in self.graph_store.neighbors(seed.memory_id):
-                    neighbor_id = (
-                        edge.target_id if edge.source_id == seed.memory_id else edge.source_id
-                    )
-                    if neighbor_id in candidates:
-                        continue
+            neighbor = self.graph_store.get_memory(neighbor_id)
+            if neighbor is not None:
+                return neighbor
+        return self.memory_store.get(neighbor_id)
 
-                    neighbor = self.graph_store.get_memory(neighbor_id) or self.memory_store.get(
-                        neighbor_id
-                    )
-                    if neighbor is None:
-                        continue
-                    if neighbor.decay.archived:
-                        continue
-
-                    candidates[neighbor_id] = _annotate_distance(neighbor, 1)
-                    if len(candidates) >= limit:
-                        break
-
+    def _assemble_ordered_candidates(
+        self,
+        ranked_by_seed: list[MemoryAtom],
+        candidates: dict[str, MemoryAtom],
+        limit: int,
+    ) -> tuple[MemoryAtom, ...]:
         ordered_ids = [
             memory.memory_id for memory in ranked_by_seed if memory.memory_id in candidates
         ]
