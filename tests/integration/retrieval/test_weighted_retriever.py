@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from cellin.core import (
     DecayState,
     EdgeKind,
@@ -231,7 +233,7 @@ def test_bundle_returns_empty_when_top_k_one_candidate_is_oversized() -> None:
     )
 
     assert bundle.memories == ()
-    assert bundle.total_score == 0.0
+    assert bundle.total_score == pytest.approx(0.0)
     assert bundle.summary is None
 
 
