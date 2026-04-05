@@ -30,6 +30,18 @@ def test_cli_end_to_end_flow(tmp_path: Path, capsys: CaptureFixture[str]) -> Non
     init_output = capsys.readouterr().out
     assert "initialized workspace" in init_output
 
+    sqlite_storage = {
+        "storage": {
+            "memory": {"backend": "sqlite", "database_path": "cellin.sqlite"},
+            "graph": {"backend": "sqlite", "database_path": "cellin.sqlite"},
+            "vector": {"backend": "in_memory_vector_index", "database_path": None},
+            "representation": {"backend": "in_memory_vector_index", "database_path": None},
+        }
+    }
+    config_payload = json.loads(config_path.read_text(encoding="utf-8"))
+    config_payload.update(sqlite_storage)
+    config_path.write_text(json.dumps(config_payload, sort_keys=True), encoding="utf-8")
+
     assert main(["ingest", "--config", str(config_path), "--input", str(input_path)]) == 0
     ingest_output = capsys.readouterr().out
     assert "memories=4" in ingest_output
