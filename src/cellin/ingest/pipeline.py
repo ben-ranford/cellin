@@ -58,9 +58,8 @@ class CanonicalIngestor:
         """Persist a sequence of normalized artifacts as memory atoms."""
 
         memories = tuple(self._artifact_to_memory(artifact) for artifact in artifacts)
+        self._persist_memories(memories)
         for memory in memories:
-            self.memory_store.put(memory)
-            self.graph_store.upsert_memory(memory)
             self.vector_index.upsert(memory.memory_id, memory.text)
         return memories
 
@@ -68,9 +67,42 @@ class CanonicalIngestor:
         artifacts = tuple(self._normalize_envelope(envelope) for envelope in envelopes)
         memories = self.ingest(artifacts)
         edges = self._build_edges(artifacts, memories)
+        self._persist_edges(edges)
+        return IngestionBatchResult(artifacts=artifacts, memories=memories, edges=edges)
+
+    def _persist_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
+        put_many = getattr(self.memory_store, "put_many", None)
+        if callable(put_many):
+            put_many(memories)
+        else:
+            for memory in memories:
+                self.memory_store.put(memory)
+
+        if not self._graph_requires_memory_upserts():
+            return
+
+        upsert_memories = getattr(self.graph_store, "upsert_memories", None)
+        if callable(upsert_memories):
+            upsert_memories(memories)
+            return
+
+        for memory in memories:
+            self.graph_store.upsert_memory(memory)
+
+    def _persist_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
+        upsert_edges = getattr(self.graph_store, "upsert_edges", None)
+        if callable(upsert_edges):
+            upsert_edges(edges)
+            return
+
         for edge in edges:
             self.graph_store.upsert_edge(edge)
-        return IngestionBatchResult(artifacts=artifacts, memories=memories, edges=edges)
+
+    def _graph_requires_memory_upserts(self) -> bool:
+        shares_memory_store = getattr(self.graph_store, "shares_memory_store", None)
+        if callable(shares_memory_store):
+            return not bool(shares_memory_store(self.memory_store))
+        return True
 
     def _normalize_envelope(self, envelope: ArtifactEnvelope) -> Artifact:
         adapter = self.adapters[envelope.modality]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 from cellin.core import (
     DecayState,
@@ -13,6 +14,7 @@ from cellin.core import (
     MemoryAtom,
     MemoryEdge,
     MemoryKind,
+    MemoryStore,
     Modality,
     Provenance,
     RetrievalStats,
@@ -136,13 +138,15 @@ def _edge_archived(edge: MemoryEdge) -> bool:
     return bool(archived) if isinstance(archived, bool) else False
 
 
-class _SQLiteBase:
+class _SQLiteBackend:
+    """Shared SQLite boundary for memory and graph persistence."""
+
     def __init__(self, database_path: str) -> None:
-        self._database_path = database_path
+        self.database_path = database_path
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._database_path)
+        return sqlite3.connect(self.database_path)
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -165,22 +169,21 @@ class _SQLiteBase:
                 """
             )
 
-
-class SQLiteMemoryStore(_SQLiteBase):
-    """Persists memory atoms in SQLite as JSON payloads."""
-
-    def put(self, memory: MemoryAtom) -> None:
+    def put_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
+        if not memories:
+            return
+        rows = [(memory.memory_id, _dump_memory(memory)) for memory in memories]
         with self._connect() as connection:
-            connection.execute(
+            connection.executemany(
                 """
                 INSERT INTO memories(memory_id, payload)
                 VALUES (?, ?)
                 ON CONFLICT(memory_id) DO UPDATE SET payload = excluded.payload
                 """,
-                (memory.memory_id, _dump_memory(memory)),
+                rows,
             )
 
-    def get(self, memory_id: str) -> MemoryAtom | None:
+    def get_memory(self, memory_id: str) -> MemoryAtom | None:
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT payload FROM memories WHERE memory_id = ?",
@@ -190,31 +193,24 @@ class SQLiteMemoryStore(_SQLiteBase):
             return None
         return _load_memory(row[0])
 
-    def list(self) -> tuple[MemoryAtom, ...]:
+    def list_memories(self) -> tuple[MemoryAtom, ...]:
         with self._connect() as connection:
             rows = connection.execute("SELECT payload FROM memories ORDER BY memory_id").fetchall()
         return tuple(_load_memory(row[0]) for row in rows)
 
-
-class SQLiteGraphStore(_SQLiteBase):
-    """Persists graph nodes and edges in SQLite."""
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        SQLiteMemoryStore(self._database_path).put(memory)
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
+    def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
+        if not edges:
+            return
+        rows = [(edge.edge_id, edge.source_id, edge.target_id, _dump_edge(edge)) for edge in edges]
         with self._connect() as connection:
-            connection.execute(
+            connection.executemany(
                 """
                 INSERT INTO edges(edge_id, source_id, target_id, payload)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(edge_id) DO UPDATE SET payload = excluded.payload
                 """,
-                (edge.edge_id, edge.source_id, edge.target_id, _dump_edge(edge)),
+                rows,
             )
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return SQLiteMemoryStore(self._database_path).get(memory_id)
 
     def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
         with self._connect() as connection:
@@ -233,3 +229,67 @@ class SQLiteGraphStore(_SQLiteBase):
         with self._connect() as connection:
             rows = connection.execute("SELECT payload FROM edges ORDER BY edge_id").fetchall()
         return tuple(edge for row in rows if not _edge_archived(edge := _load_edge(row[0])))
+
+
+_BACKENDS: dict[str, _SQLiteBackend] = {}
+
+
+def _backend_for(database_path: str) -> _SQLiteBackend:
+    resolved_path = str(Path(database_path).resolve())
+    backend = _BACKENDS.get(resolved_path)
+    if backend is None:
+        backend = _SQLiteBackend(resolved_path)
+        _BACKENDS[resolved_path] = backend
+    return backend
+
+
+class _SQLiteBase:
+    def __init__(self, database_path: str, *, backend: _SQLiteBackend | None = None) -> None:
+        self._backend = backend or _backend_for(database_path)
+        self._database_path = self._backend.database_path
+
+
+class SQLiteMemoryStore(_SQLiteBase):
+    """Persists memory atoms in SQLite as JSON payloads."""
+
+    def put(self, memory: MemoryAtom) -> None:
+        self.put_many((memory,))
+
+    def put_many(self, memories: tuple[MemoryAtom, ...]) -> None:
+        self._backend.put_memories(memories)
+
+    def get(self, memory_id: str) -> MemoryAtom | None:
+        return self._backend.get_memory(memory_id)
+
+    def list(self) -> tuple[MemoryAtom, ...]:
+        return self._backend.list_memories()
+
+
+class SQLiteGraphStore(_SQLiteBase):
+    """Persists graph edges and reads graph-backed memory state from SQLite."""
+
+    def upsert_memory(self, memory: MemoryAtom) -> None:
+        self._backend.put_memories((memory,))
+
+    def upsert_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
+        self._backend.put_memories(memories)
+
+    def upsert_edge(self, edge: MemoryEdge) -> None:
+        self.upsert_edges((edge,))
+
+    def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
+        self._backend.upsert_edges(edges)
+
+    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
+        return (
+            isinstance(memory_store, SQLiteMemoryStore) and memory_store._backend is self._backend
+        )
+
+    def get_memory(self, memory_id: str) -> MemoryAtom | None:
+        return self._backend.get_memory(memory_id)
+
+    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
+        return self._backend.neighbors(memory_id)
+
+    def list_edges(self) -> tuple[MemoryEdge, ...]:
+        return self._backend.list_edges()
