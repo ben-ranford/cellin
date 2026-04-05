@@ -187,15 +187,15 @@ def _run_ingest_case() -> EvaluationCaseResult:
         )
         result = ingestor.ingest_envelopes(load_envelope_corpus("multimodal_artifacts"))
         vector_results = vector_index.search("memory graph retrieval pipeline", limit=1)
+        memory_count = len(result.memories)
+        edge_count = len(result.edges)
         metrics = {
-            "memory_count": float(len(result.memories)),
-            "edge_count": float(len(result.edges)),
+            "memory_count": float(memory_count),
+            "edge_count": float(edge_count),
             "vector_top_score": vector_results[0].score,
         }
         baseline = {"memory_count": 4.0, "edge_count": 2.0, "vector_top_score": 0.0}
-        status = (
-            "ok" if metrics["memory_count"] == 4.0 and metrics["edge_count"] >= 2.0 else "failed"
-        )
+        status = "ok" if memory_count == 4 and edge_count >= 2 else "failed"
         return EvaluationCaseResult(
             case_id="ingest-multimodal",
             status=status,
@@ -225,7 +225,7 @@ def _run_retrieval_case(
     baseline = {"hit_rate": 1.0}
     return EvaluationCaseResult(
         case_id=case_id,
-        status="ok" if hit_rate == 1.0 else "failed",
+        status="ok" if actual_ids == benchmark.expected_memory_ids else "failed",
         metrics=metrics,
         baseline_metrics=baseline,
         delta_metrics=_delta(metrics, baseline),
@@ -288,16 +288,15 @@ def _run_contradiction_case() -> EvaluationCaseResult:
     older = memory_store.get("atlas-rollout-green")
     assert result is not None
     assert older is not None
+    contradiction_edge_count = len(graph_store.list_edges())
     metrics = {
-        "contradiction_edges": float(len(graph_store.list_edges())),
+        "contradiction_edges": float(contradiction_edge_count),
         "older_trust": older.trust_score,
     }
     baseline = {"contradiction_edges": 0.0, "older_trust": 0.95}
     return EvaluationCaseResult(
         case_id="contradiction-repair",
-        status="ok"
-        if metrics["contradiction_edges"] == 1.0 and older.trust_score < 0.95
-        else "failed",
+        status="ok" if contradiction_edge_count == 1 and older.trust_score < 0.95 else "failed",
         metrics=metrics,
         baseline_metrics=baseline,
         delta_metrics=_delta(metrics, baseline),
