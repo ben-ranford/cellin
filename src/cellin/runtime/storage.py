@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import Literal, Protocol, cast
 
 from cellin.core import GraphStore, MemoryStore, VectorStore
-from cellin.stores import InMemoryVectorIndex, SQLiteGraphStore, SQLiteMemoryStore
+from cellin.stores import (
+    InMemoryGraphStore,
+    InMemoryMemoryStore,
+    InMemoryVectorIndex,
+    SQLiteGraphStore,
+    SQLiteMemoryStore,
+)
 
 StorageRole = Literal["graph", "memory", "representation", "vector"]
 
@@ -35,13 +41,26 @@ class StorageConfig:
 
     @classmethod
     def with_sqlite_preset(cls, database_path: str) -> StorageConfig:
-        """Return a config that keeps SQLite for graph/memory and in-memory vector roles."""
+        """Return an explicit, sqlite-backed storage preset."""
 
         sqlite_backend = StorageBackendConfig("sqlite", database_path)
         vector_backend = StorageBackendConfig("in_memory_vector_index")
         return cls(
             memory=sqlite_backend,
             graph=sqlite_backend,
+            vector=vector_backend,
+            representation=vector_backend,
+        )
+
+    @classmethod
+    def with_in_memory_preset(cls) -> StorageConfig:
+        """Return the batteries-included in-memory storage preset."""
+
+        in_memory_backend = StorageBackendConfig("in_memory")
+        vector_backend = StorageBackendConfig("in_memory_vector_index")
+        return cls(
+            memory=in_memory_backend,
+            graph=in_memory_backend,
             vector=vector_backend,
             representation=vector_backend,
         )
@@ -108,6 +127,24 @@ def _build_sqlite_graph_store(
     return SQLiteGraphStore(database_path)
 
 
+def _build_in_memory_memory_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> MemoryStore:
+    del config, workspace_root
+    return InMemoryMemoryStore()
+
+
+def _build_in_memory_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    del config, workspace_root
+    return InMemoryGraphStore()
+
+
 def _build_vector_store(
     config: StorageBackendConfig,
     *,
@@ -121,11 +158,13 @@ def _build_vector_store(
 
 _MEMORY_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
     "sqlite": _build_sqlite_memory_store,
+    "in_memory": _build_in_memory_memory_store,
 }
 
 
 _GRAPH_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
     "sqlite": _build_sqlite_graph_store,
+    "in_memory": _build_in_memory_graph_store,
 }
 
 

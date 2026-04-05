@@ -89,7 +89,9 @@ def _coerce_storage_config(raw: Mapping[str, object]) -> StorageConfig:
     )
     raw_storage = raw.get("storage")
     if raw_storage is None:
-        return StorageConfig.with_sqlite_preset(fallback_database_path)
+        if isinstance(legacy_database_path, str):
+            return StorageConfig.with_sqlite_preset(legacy_database_path)
+        return StorageConfig.with_in_memory_preset()
 
     if not isinstance(raw_storage, Mapping):
         raise ValueError("`storage` must be an object.")
@@ -98,13 +100,13 @@ def _coerce_storage_config(raw: Mapping[str, object]) -> StorageConfig:
         memory=_coerce_storage_role(
             "memory",
             raw_storage.get("memory"),
-            default_backend="sqlite",
+            default_backend="in_memory",
             fallback_database_path=fallback_database_path,
         ),
         graph=_coerce_storage_role(
             "graph",
             raw_storage.get("graph"),
-            default_backend="sqlite",
+            default_backend="in_memory",
             fallback_database_path=fallback_database_path,
         ),
         vector=_coerce_storage_role(
@@ -129,7 +131,7 @@ def init_workspace(target: Path) -> Path:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     if not config_path.exists():
         defaults = WorkspaceConfig(
-            storage=StorageConfig.with_sqlite_preset(DEFAULT_DATABASE_FILENAME),
+            storage=StorageConfig.with_in_memory_preset(),
         )
         payload = asdict(defaults)
         payload.pop("database_path", None)

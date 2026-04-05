@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from cellin.cli.config import DEFAULT_DATABASE_FILENAME, load_workspace
+from cellin.cli.config import load_workspace
 from cellin.runtime.storage import (
     StorageBackendConfig,
     StorageBackendError,
@@ -89,8 +89,16 @@ def test_load_workspace_defaults_role_specific_graph_memory_path_when_missing(
     )
     workspace = load_workspace(config_path)
 
-    assert workspace.storage == StorageConfig.with_sqlite_preset(DEFAULT_DATABASE_FILENAME)
-    assert workspace.storage.vector.backend == "in_memory_vector_index"
+    assert workspace.storage == StorageConfig.with_in_memory_preset()
+
+
+def test_load_workspace_defaults_to_in_memory_preset_when_storage_omitted(tmp_path: Path) -> None:
+    config_path = tmp_path / "minimal.json"
+    config_path.write_text(json.dumps({}), encoding="utf-8")
+
+    workspace = load_workspace(config_path)
+
+    assert workspace.storage == StorageConfig.with_in_memory_preset()
 
 
 def test_build_storage_bundle_resolves_sqlite_path_in_workspace(tmp_path: Path) -> None:

@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from cellin.cli.config import load_workspace
+from cellin.cli.config import init_workspace, load_workspace
+from cellin.runtime.storage import StorageConfig
 
 
 def _write_config(path: Path, payload: object) -> Path:
@@ -72,3 +73,20 @@ def test_load_workspace_treats_empty_sqlite_database_path_as_legacy_fallback(
 
     assert workspace.storage.memory.database_path == "legacy.sqlite"
     assert workspace.storage.graph.database_path == "legacy.sqlite"
+
+
+def test_init_workspace_defaults_to_in_memory_preset(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    config_path = init_workspace(workspace)
+
+    workspace_config = load_workspace(config_path)
+    assert workspace_config.storage == StorageConfig.with_in_memory_preset()
+
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+
+    assert payload["storage"] == {
+        "memory": {"backend": "in_memory", "database_path": None},
+        "graph": {"backend": "in_memory", "database_path": None},
+        "vector": {"backend": "in_memory_vector_index", "database_path": None},
+        "representation": {"backend": "in_memory_vector_index", "database_path": None},
+    }

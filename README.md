@@ -46,15 +46,27 @@ Workspace config now supports role-specific storage backends:
   "trace_path": "traces.jsonl",
   "profile_name": "balanced",
   "storage": {
-    "memory": { "backend": "sqlite", "database_path": "cellin.sqlite" },
-    "graph": { "backend": "sqlite", "database_path": "cellin.sqlite" },
+    "memory": { "backend": "in_memory" },
+    "graph": { "backend": "in_memory" },
     "vector": { "backend": "in_memory_vector_index" },
     "representation": { "backend": "in_memory_vector_index" }
   }
 }
 ```
 
+`cellin init` now writes this in-memory-first preset by default.
+
 Legacy workspaces that only define `database_path` continue to work and are migrated to this shape behind the scenes.
+
+For an explicit SQLite preset, set:
+
+```json
+{
+  "memory": { "backend": "sqlite", "database_path": "cellin.sqlite" },
+  "graph": { "backend": "sqlite", "database_path": "cellin.sqlite" }
+}
+```
+
 
 ## Primary surfaces
 
