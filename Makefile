@@ -3,7 +3,7 @@ TAG ?=
 EXPECT_VERSION ?=
 RELEASE_KIND ?= any
 
-.PHONY: bootstrap hooks fmt fmt-check lint typecheck test eval-smoke eval-full eval package package-smoke version-check release-smoke verify ci docs
+.PHONY: bootstrap hooks fmt fmt-check lint typecheck test coverage eval-smoke eval-full eval package package-smoke version-check release-smoke verify ci docs
 
 bootstrap:
 	$(UV) sync --dev
@@ -26,6 +26,10 @@ typecheck:
 
 test:
 	$(UV) run pytest
+
+coverage:
+	$(UV) run pytest --cov=src/cellin --cov-report=term-missing:skip-covered --cov-report=json:coverage.json
+	$(UV) run python scripts/check_coverage.py --coverage-json coverage.json --source-root src/cellin --overall 98 --package 98
 
 eval-smoke:
 	$(UV) run python -m cellin.evals smoke --output eval-results/smoke.json
@@ -55,7 +59,7 @@ version-check:
 
 release-smoke: ci package-smoke
 
-verify: fmt-check lint typecheck test eval-smoke
+verify: fmt-check lint typecheck coverage eval-smoke
 
 ci: verify docs version-check
 

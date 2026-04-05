@@ -27,7 +27,7 @@ If hooks stop firing after a dependency reset, run:
 make hooks
 ```
 
-Generated artifacts such as `eval-results/`, `dist/`, and `site/` should not be committed.
+Generated artifacts such as `eval-results/`, `dist/`, `site/`, and `coverage.json` should not be committed.
 
 ## Workflow
 
@@ -48,6 +48,7 @@ Canonical commands:
 - `make lint`
 - `make typecheck`
 - `make test`
+- `make coverage`
 - `make eval-smoke`
 - `make package`
 - `make package-smoke`
