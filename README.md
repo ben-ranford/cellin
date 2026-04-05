@@ -38,6 +38,24 @@ python3 -m uv run cellin trace inspect --config "$WORKSPACE/cellin.json" --limit
 
 See `examples/starter/README.md` for the same flow in a shorter checklist form.
 
+Workspace config now supports role-specific storage backends:
+
+```json
+{
+  "runtime_id": "cellin-cli",
+  "trace_path": "traces.jsonl",
+  "profile_name": "balanced",
+  "storage": {
+    "memory": { "backend": "sqlite", "database_path": "cellin.sqlite" },
+    "graph": { "backend": "sqlite", "database_path": "cellin.sqlite" },
+    "vector": { "backend": "in_memory_vector_index" },
+    "representation": { "backend": "in_memory_vector_index" }
+  }
+}
+```
+
+Legacy workspaces that only define `database_path` continue to work and are migrated to this shape behind the scenes.
+
 ## Primary surfaces
 
 - CLI: `cellin init`, `ingest`, `retrieve`, `dream`, `plugin list`, `eval run`, `trace inspect`

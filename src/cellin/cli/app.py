@@ -9,7 +9,13 @@ from datetime import datetime
 from pathlib import Path
 
 from cellin import __version__
-from cellin.cli.config import append_trace, init_workspace, load_workspace, read_traces
+from cellin.cli.config import (
+    ResolvedWorkspace,
+    append_trace,
+    init_workspace,
+    load_workspace,
+    read_traces,
+)
 from cellin.core import Modality
 from cellin.core.models import JSONValue
 from cellin.dreaming import DreamRunner
@@ -17,8 +23,12 @@ from cellin.evals import run_evaluation_suite
 from cellin.ingest import ArtifactEnvelope, CanonicalIngestor
 from cellin.ranking import WeightedRanker, get_weight_profile
 from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
-from cellin.runtime import InMemoryTraceSinkPlugin, PluginRegistry
-from cellin.stores import InMemoryVectorIndex, SQLiteGraphStore, SQLiteMemoryStore
+from cellin.runtime import (
+    InMemoryTraceSinkPlugin,
+    PluginRegistry,
+    StorageBundle,
+    build_storage_bundle,
+)
 
 TRACE_INSPECT_SUCCESS_EXIT_CODE = 0
 
@@ -47,13 +57,16 @@ def _load_envelopes(input_path: Path) -> tuple[ArtifactEnvelope, ...]:
     return tuple(envelopes)
 
 
-def _retriever(config_path: Path) -> WeightedRetriever:
+def _load_bundle(config_path: Path) -> tuple[ResolvedWorkspace, StorageBundle]:
     workspace = load_workspace(config_path)
-    memory_store = SQLiteMemoryStore(str(workspace.database_path))
-    graph_store = SQLiteGraphStore(str(workspace.database_path))
+    return workspace, build_storage_bundle(workspace.storage, workspace_root=config_path.parent)
+
+
+def _retriever(config_path: Path) -> WeightedRetriever:
+    workspace, bundle = _load_bundle(config_path)
     profile = get_weight_profile(workspace.profile_name)
     return WeightedRetriever(
-        candidate_generator=RetrievalCandidateGenerator(memory_store, graph_store),
+        candidate_generator=RetrievalCandidateGenerator(bundle.memory_store, bundle.graph_store),
         ranker=WeightedRanker(profile=profile),
         profile=profile,
     )
@@ -72,12 +85,11 @@ def cmd_init(args: argparse.Namespace) -> int:
 def cmd_ingest(args: argparse.Namespace) -> int:
     config_path = Path(args.config)
     workspace = load_workspace(config_path)
-    graph_store = SQLiteGraphStore(str(workspace.database_path))
-    memory_store = SQLiteMemoryStore(str(workspace.database_path))
+    bundle = build_storage_bundle(workspace.storage, workspace_root=config_path.parent)
     ingestor = CanonicalIngestor.with_built_in_adapters(
-        graph_store=graph_store,
-        memory_store=memory_store,
-        vector_index=InMemoryVectorIndex(),
+        graph_store=bundle.graph_store,
+        memory_store=bundle.memory_store,
+        vector_store=bundle.vector_store,
     )
     result = ingestor.ingest_envelopes(_load_envelopes(Path(args.input)))
     _record(
@@ -125,9 +137,10 @@ def cmd_retrieve(args: argparse.Namespace) -> int:
 def cmd_dream(args: argparse.Namespace) -> int:
     config_path = Path(args.config)
     workspace = load_workspace(config_path)
+    bundle = build_storage_bundle(workspace.storage, workspace_root=config_path.parent)
     runner = DreamRunner(
-        graph_store=SQLiteGraphStore(str(workspace.database_path)),
-        memory_store=SQLiteMemoryStore(str(workspace.database_path)),
+        graph_store=bundle.graph_store,
+        memory_store=bundle.memory_store,
     )
     results = (
         (runner.run_strategy(args.strategy),) if args.strategy is not None else runner.run_pending()

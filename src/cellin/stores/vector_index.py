@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import math
 import re
-from dataclasses import dataclass
+
+from cellin.core import VectorMatch
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 VECTOR_SIZE = 12
@@ -27,14 +28,6 @@ def _vectorize(text: str) -> tuple[float, ...]:
     return tuple(value / norm for value in buckets)
 
 
-@dataclass(frozen=True, slots=True)
-class SearchResult:
-    """A deterministic vector-index search match."""
-
-    memory_id: str
-    score: float
-
-
 class InMemoryVectorIndex:
     """A simple in-memory cosine-similarity index."""
 
@@ -44,10 +37,10 @@ class InMemoryVectorIndex:
     def upsert(self, memory_id: str, text: str) -> None:
         self._vectors[memory_id] = _vectorize(text)
 
-    def search(self, query: str, *, limit: int = 5) -> tuple[SearchResult, ...]:
+    def search(self, query: str, *, limit: int = 5) -> tuple[VectorMatch, ...]:
         query_vector = _vectorize(query)
         results = [
-            SearchResult(
+            VectorMatch(
                 memory_id=memory_id,
                 score=round(
                     sum(a * b for a, b in zip(query_vector, vector, strict=True)),
@@ -58,3 +51,6 @@ class InMemoryVectorIndex:
         ]
         ordered = sorted(results, key=lambda result: result.score, reverse=True)
         return tuple(ordered[:limit])
+
+
+SearchResult = VectorMatch

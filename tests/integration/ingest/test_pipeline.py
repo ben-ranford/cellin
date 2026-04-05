@@ -38,7 +38,7 @@ def test_ingestion_pipeline_persists_memories_edges_and_vectors(tmp_path) -> Non
     ingestor = CanonicalIngestor.with_built_in_adapters(
         graph_store=graph_store,
         memory_store=memory_store,
-        vector_index=vector_index,
+        vector_store=vector_index,
     )
 
     result = ingestor.ingest_envelopes(_load_fixture())
@@ -74,7 +74,7 @@ def test_ingestion_pipeline_batches_sqlite_writes_for_shared_store(tmp_path, mon
     ingestor = CanonicalIngestor.with_built_in_adapters(
         graph_store=graph_store,
         memory_store=memory_store,
-        vector_index=vector_index,
+        vector_store=vector_index,
     )
     connect_calls = 0
     original_connect = sqlite3.connect
