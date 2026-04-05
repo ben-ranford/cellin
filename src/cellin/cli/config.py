@@ -3,24 +3,28 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from cellin.core import TraceEvent
 from cellin.core.models import JSONValue
 
-CONFIG_FILE = "cellin.json"
+DEFAULT_CONFIG_FILENAME = "cellin.json"
+DEFAULT_RUNTIME_ID = "cellin-cli"
+DEFAULT_DATABASE_FILENAME = "cellin.sqlite"
+DEFAULT_TRACE_FILENAME = "traces.jsonl"
+DEFAULT_PROFILE_NAME = "balanced"
 
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceConfig:
     """Serializable CLI workspace config."""
 
-    runtime_id: str = "cellin-cli"
-    database_path: str = "cellin.sqlite"
-    trace_path: str = "traces.jsonl"
-    profile_name: str = "balanced"
+    runtime_id: str = DEFAULT_RUNTIME_ID
+    database_path: str = DEFAULT_DATABASE_FILENAME
+    trace_path: str = DEFAULT_TRACE_FILENAME
+    profile_name: str = DEFAULT_PROFILE_NAME
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,15 +41,10 @@ class ResolvedWorkspace:
 def init_workspace(target: Path) -> Path:
     """Create a workspace config file if it does not exist."""
 
-    config_path = target if target.suffix == ".json" else target / CONFIG_FILE
+    config_path = target if target.suffix == ".json" else target / DEFAULT_CONFIG_FILENAME
     config_path.parent.mkdir(parents=True, exist_ok=True)
     if not config_path.exists():
-        payload = {
-            "runtime_id": "cellin-cli",
-            "database_path": "cellin.sqlite",
-            "trace_path": "traces.jsonl",
-            "profile_name": "balanced",
-        }
+        payload = asdict(WorkspaceConfig())
         config_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return config_path
 
@@ -54,11 +53,12 @@ def load_workspace(config_path: Path) -> ResolvedWorkspace:
     """Load a workspace config and resolve relative paths."""
 
     raw = json.loads(config_path.read_text(encoding="utf-8"))
+    defaults = WorkspaceConfig()
     workspace = WorkspaceConfig(
-        runtime_id=str(raw.get("runtime_id", "cellin-cli")),
-        database_path=str(raw.get("database_path", "cellin.sqlite")),
-        trace_path=str(raw.get("trace_path", "traces.jsonl")),
-        profile_name=str(raw.get("profile_name", "balanced")),
+        runtime_id=str(raw.get("runtime_id", defaults.runtime_id)),
+        database_path=str(raw.get("database_path", defaults.database_path)),
+        trace_path=str(raw.get("trace_path", defaults.trace_path)),
+        profile_name=str(raw.get("profile_name", defaults.profile_name)),
     )
     root = config_path.parent
     return ResolvedWorkspace(
