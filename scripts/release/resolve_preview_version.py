@@ -12,6 +12,7 @@ from _versioning import (
     build_preview_version,
     derive_preview_base_version,
     load_assigned_version,
+    select_latest_stable_tag,
     stable_base_version,
 )
 
@@ -27,10 +28,8 @@ def _git(*args: str) -> str:
 
 
 def _latest_stable_tag(ref: str) -> str | None:
-    tags = _git("tag", "--merged", ref, "--sort=-v:refname", "--list", "v[0-9]*.[0-9]*.[0-9]*")
-    if not tags:
-        return None
-    return tags.splitlines()[0]
+    tags = _git("tag", "--merged", ref, "--sort=-v:refname")
+    return select_latest_stable_tag(tags.splitlines())
 
 
 def _commit_messages(revision_range: str) -> list[CommitMessage]:

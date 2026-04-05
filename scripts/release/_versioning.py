@@ -78,6 +78,21 @@ def validate_release_kind(version: str, release_kind: ReleaseKind) -> None:
         raise ValueError("Preview releases must use PEP 440 development versions like X.Y.Z.devN")
 
 
+def is_stable_tag(tag: str) -> bool:
+    """Return whether a Git tag matches Cellin's stable tag shape."""
+
+    return tag.startswith("v") and STABLE_PATTERN.fullmatch(tag.removeprefix("v")) is not None
+
+
+def select_latest_stable_tag(tags: Iterable[str]) -> str | None:
+    """Pick the most recent stable tag from an already sorted tag list."""
+
+    for tag in tags:
+        if is_stable_tag(tag):
+            return tag
+    return None
+
+
 def stable_base_version(version: str) -> str:
     """Return the stable base triple for any supported version string."""
 
