@@ -1,0 +1,46 @@
+name: Repo rigor or automation issue
+description: Capture CI, release, governance, or workflow hardening work.
+title: "[Rigor]: "
+labels: ["rigor-uplift"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What repo hygiene, automation, or governance gap exists?
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected_surface
+    attributes:
+      label: Affected surface
+      description: Which workflow, ruleset, hook, template, or automation is involved?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Commands, workflow runs, or examples that show the gap.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired_enforcement
+    attributes:
+      label: Desired enforcement or behavior
+      description: What should the repo do instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What checks or guarantees should exist when this is done?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...

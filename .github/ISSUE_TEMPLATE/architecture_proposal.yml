@@ -1,0 +1,49 @@
+name: Architecture or design issue
+description: Capture a boundary problem, design debt item, or structural change.
+title: "[Architecture]: "
+labels: ["architecture"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for confirmed boundary problems, coupling issues, or design changes.
+
+  - type: textarea
+    id: seam
+    attributes:
+      label: Affected boundary or seam
+      description: Which subsystem boundary or design contract is the issue about?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_problem
+    attributes:
+      label: Current problem
+      description: What is structurally wrong or expensive today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Commands, metrics, traces, or examples that show the problem.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_direction
+    attributes:
+      label: Proposed direction
+      description: What boundary, ownership, or architecture change should happen?
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What outcome or simplification would close this issue?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...

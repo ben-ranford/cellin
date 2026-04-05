@@ -1,0 +1,51 @@
+name: Performance or efficiency issue
+description: Report a measured slowdown, waste pattern, or inefficiency.
+title: "[Performance]: "
+labels: ["performance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for measured regressions or confirmed waste patterns.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is slow or wasteful?
+    validations:
+      required: true
+
+  - type: textarea
+    id: workload
+    attributes:
+      label: Workload or scenario
+      description: Which command, fixture, or corpus shows the problem?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Include timings, counts, ratios, or profiling output.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: User or system impact
+      description: Latency, CPU, memory, write amplification, or token cost impact.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What measurable improvement should close this issue?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...

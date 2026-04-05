@@ -1,24 +1,48 @@
 name: Feature request
-description: Propose a new Cellin capability or improvement.
+description: Propose an improvement or new capability.
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea.
+        Focus on user problem, expected behavior, and success criteria.
+
   - type: textarea
     id: problem
     attributes:
-      label: Problem
-      description: What is missing or expensive today?
+      label: Problem statement
+      description: What user pain does this solve?
+      placeholder: As a ..., I need ... because ...
     validations:
       required: true
+
   - type: textarea
-    id: outcome
+    id: proposal
     attributes:
-      label: Desired outcome
-      description: What should be true when this is done?
+      label: Proposed solution
+      description: Describe behavior, CLI changes, APIs, or UX.
     validations:
       required: true
+
   - type: textarea
-    id: notes
+    id: alternatives
     attributes:
-      label: Implementation notes
-      description: Constraints, affected surfaces, or examples.
+      label: Alternatives considered
+      description: Other options and why they are less suitable.
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact and scope
+      description: Affected runtime surfaces, docs, tests, performance, or compatibility.
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What must be true for this to be considered done?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...

@@ -59,10 +59,8 @@ The GitHub repository does not need long-lived `PYPI_API_TOKEN` secrets when tru
 
 ## Library Metadata
 
-The package metadata is built from `pyproject.toml` plus `src/cellin/__about__.py`.
+The package metadata is built from `pyproject.toml`, `LICENSE`, and `src/cellin/__about__.py`.
 Use `src/cellin/__about__.py` as the single source of truth for the package version.
-
-Before the first public PyPI release, decide and add an explicit project license file if Cellin is intended for third-party reuse.
 
 ## Remote Enforcement
 
