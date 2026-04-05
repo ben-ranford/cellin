@@ -5,22 +5,23 @@ name: release
     tags:
       - "v*"
 
-permissions:
-  contents: write
-
 concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  build-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      package_version: ${{ steps.version.outputs.package_version }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -33,6 +34,15 @@ jobs:
       - name: Sync dependencies
         run: python -m uv sync --dev --frozen
 
+      - name: Validate stable release version
+        id: version
+        shell: bash
+        run: |
+          python -m uv run python scripts/release/verify_version.py \
+            --tag "${GITHUB_REF_NAME}" \
+            --release-kind stable
+          echo "package_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Run release smoke
         run: make release-smoke
 
@@ -40,11 +50,31 @@ jobs:
         shell: bash
         run: shasum -a 256 dist/* > dist/SHA256SUMS.txt
 
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-dist-${{ github.ref_name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.whl
+
       - name: Upload release bundle
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ github.ref_name }}
+          name: release-bundle-${{ github.ref_name }}
           path: dist/*
+
+  publish-github-release:
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: release-bundle-${{ github.ref_name }}
+          path: dist
 
       - name: Publish GitHub release
         env:
@@ -52,3 +82,21 @@ jobs:
           TAG: ${{ github.ref_name }}
         shell: bash
         run: gh release create "$TAG" dist/* --title "$TAG" --generate-notes
+
+  publish-pypi:
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cellin
+    steps:
+      - name: Download Python distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-dist-${{ github.ref_name }}
+          path: dist
+
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

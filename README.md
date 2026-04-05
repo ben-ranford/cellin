@@ -28,6 +28,35 @@ The current local-first MVP already includes:
 4. Run `make ci`.
 5. Run `python3 -m uv run cellin plugin list`.
 
+## Install
+
+Stable release from PyPI:
+
+```bash
+pip install cellin
+```
+
+Prerelease from PyPI:
+
+```bash
+pip install --pre cellin
+```
+
+## Library Surface
+
+Cellin can be used as a Python library as well as a CLI:
+
+```python
+from cellin.ingest import ArtifactEnvelope, CanonicalIngestor
+from cellin.ranking import WeightedRanker, get_weight_profile
+from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
+from cellin.stores import InMemoryVectorIndex, SQLiteGraphStore, SQLiteMemoryStore
+```
+
+The stable import surfaces today are the subpackages under `cellin.core`, `cellin.ingest`,
+`cellin.retrieval`, `cellin.ranking`, `cellin.dreaming`, `cellin.evals`, `cellin.runtime`,
+and `cellin.stores`.
+
 ## Starter Workflow
 
 Run the local MVP loop from the repository root:
@@ -98,5 +127,6 @@ Treat the MVP as shippable only if these stay green:
 
 ## Release Channels
 
-- Stable releases are published from pushed semver tags through `.github/workflows/release.yml`.
+- Stable releases are published from pushed semver tags such as `v0.1.0` through `.github/workflows/release.yml`.
 - Prereleases are published from manual GitHub Actions runs through `.github/workflows/rolling-release.yml`.
+- Python package versions follow semver-compatible PEP 440 syntax: stable `X.Y.Z`, prerelease `X.Y.ZrcN`, `X.Y.ZbN`, or `X.Y.ZaN`.

@@ -4,14 +4,32 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cellin"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Pluggable multimodal memory, retrieval, and dreaming system."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
+authors = [{ name = "Ben Ranford" }]
+keywords = ["memory", "retrieval", "multimodal", "agents", "evals"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 [project.scripts]
 cellin = "cellin.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/ben-ranford/cellin/tree/main/docs"
+Issues = "https://github.com/ben-ranford/cellin/issues"
+Releases = "https://github.com/ben-ranford/cellin/releases"
+Source = "https://github.com/ben-ranford/cellin"
 
 [dependency-groups]
 dev = [
@@ -26,6 +44,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cellin"]
+
+[tool.hatch.version]
+path = "src/cellin/__about__.py"
 
 [tool.pytest.ini_options]
 addopts = "-ra"

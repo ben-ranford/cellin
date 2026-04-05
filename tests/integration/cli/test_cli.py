@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from pytest import CaptureFixture
 
+from cellin import __version__
 from cellin.cli import main
 
 
@@ -81,3 +83,11 @@ def test_cli_end_to_end_flow(tmp_path: Path, capsys: CaptureFixture[str]) -> Non
     trace_output = capsys.readouterr().out
     assert "name=cli.ingest" in trace_output
     assert "name=cli.eval" in trace_output
+
+
+def test_cli_version_flag(capsys: CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--version"])
+    assert excinfo.value.code == 0
+    version_output = capsys.readouterr().out.strip()
+    assert version_output.endswith(__version__)
