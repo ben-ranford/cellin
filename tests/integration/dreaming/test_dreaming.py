@@ -254,3 +254,34 @@ def test_abstraction_benchmark_improves_retrieval_for_combined_queries() -> None
     assert result is not None
     assert after.memories[0].memory.memory_id == benchmark.expected_top_memory_id_after
     assert after.total_score >= before.total_score + benchmark.minimum_score_gain
+
+
+def test_abstraction_summary_token_count_matches_rendered_summary() -> None:
+    now = datetime(2026, 4, 4, tzinfo=UTC)
+    memories = (
+        _memory(
+            "atlas-summary-low",
+            "Atlas keeps a durable memory graph.",
+            observed_at=now - timedelta(days=2),
+            topic="atlas",
+            salience=0.4,
+        ),
+        _memory(
+            "atlas-summary-high",
+            "Atlas retrieval favors higher-salience evidence first.",
+            observed_at=now - timedelta(days=1),
+            topic="atlas",
+            salience=0.9,
+        ),
+    )
+    memory_store = InMemoryMemoryStore(memories)
+    graph_store = InMemoryGraphStore(memories)
+    strategy = AbstractionDreamStrategy()
+
+    result = strategy.execute(graph_store, memory_store, at=now)
+
+    assert result is not None
+    created_memory_id = result.artifact.affected_memory_ids[0]
+    summary_memory = memory_store.get(created_memory_id)
+    assert summary_memory is not None
+    assert summary_memory.metadata["token_count"] == len(summary_memory.text.split())
