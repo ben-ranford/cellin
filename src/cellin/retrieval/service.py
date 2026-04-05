@@ -48,12 +48,18 @@ class WeightedRetriever:
         *,
         token_budget: int,
     ) -> tuple[ScoredMemory, ...]:
+        """Select ranked memories whose cumulative token cost never exceeds budget."""
+        if token_budget <= 0:
+            return ()
+
         selected: list[ScoredMemory] = []
         consumed = 0
 
         for item in ranked:
             cost = _estimate_token_cost(item)
-            if selected and consumed + cost > token_budget:
+            # Never include a memory that would exceed the remaining budget,
+            # including the top-ranked candidate when it is oversized.
+            if consumed + cost > token_budget:
                 continue
             selected.append(item)
             consumed += cost
