@@ -10,7 +10,8 @@ import tomllib
 from pathlib import Path
 
 VERSION_PATTERN = re.compile(
-    r'^__version__\s*=\s*"(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)"\s*$', re.MULTILINE
+    r'^__version__\s*=\s*"(?P<version>\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)"(?:\s*#.*)?\s*$',
+    re.MULTILINE,
 )
 STABLE_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 PRERELEASE_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:a|b|rc)\d+$")

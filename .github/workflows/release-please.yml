@@ -1,0 +1,40 @@
+name: release-please
+
+"on":
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please-disabled:
+    if: ${{ env.RELEASE_PLEASE_TOKEN == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report missing token
+        run: |
+          echo "::warning::RELEASE_PLEASE_TOKEN is not configured. Stable release initiation remains disabled until the token is added."
+
+  release-please:
+    if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run release-please
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ env.RELEASE_PLEASE_TOKEN }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

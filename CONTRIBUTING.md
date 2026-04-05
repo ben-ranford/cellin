@@ -34,8 +34,9 @@ Generated artifacts such as `eval-results/`, `dist/`, and `site/` should not be 
 1. Create a branch for your change using `feat/<issue-number>-<slug>` or `bug/<issue-number>-<slug>`.
 2. Keep work scoped to one issue stream.
 3. Add or update tests, eval fixtures, docs, and starter examples when behavior changes.
-4. Run `make release-smoke` before pushing.
-5. Open a draft PR until the stream is ready for review.
+4. Use Conventional Commits for commit messages and PR titles. Stable release automation derives semver bumps from `fix:`, `feat:`, and `BREAKING CHANGE` markers.
+5. Run `make release-smoke` before pushing.
+6. Open a draft PR until the stream is ready for review.
 
 ## Quality Gates
 
@@ -62,12 +63,13 @@ python3 -m uv run lefthook run pre-commit
 
 ## Release Workflow
 
-- Stable releases are cut from semver tags such as `v0.1.1`.
+- Stable releases are initiated by `release-please` from merged conventional commits on `main`.
+- Release PRs carry the version bump, changelog update, and tag metadata for the next stable cut.
 - Prerelease versions use PEP 440 syntax such as `0.2.0rc1`.
 - Manual prereleases are created through the GitHub Actions `rolling-release` workflow.
 - Run `make version-check` when you change the package version or prepare a release branch.
 - Run `make release-smoke` before you cut or approve a release-related change.
-- Use `RELEASING.md` for tag naming, trusted publishing setup, and artifact expectations.
+- Use `RELEASING.md` for the stable release PR flow, trusted publishing setup, token requirements, and artifact expectations.
 
 ## What to Include in PRs
 
