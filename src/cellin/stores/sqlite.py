@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -149,7 +150,7 @@ class _SQLiteBackend:
         return sqlite3.connect(self.database_path)
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS memories (
@@ -173,7 +174,7 @@ class _SQLiteBackend:
         if not memories:
             return
         rows = [(memory.memory_id, _dump_memory(memory)) for memory in memories]
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executemany(
                 """
                 INSERT INTO memories(memory_id, payload)
@@ -184,7 +185,7 @@ class _SQLiteBackend:
             )
 
     def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             row = connection.execute(
                 "SELECT payload FROM memories WHERE memory_id = ?",
                 (memory_id,),
@@ -194,7 +195,7 @@ class _SQLiteBackend:
         return _load_memory(row[0])
 
     def list_memories(self) -> tuple[MemoryAtom, ...]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute("SELECT payload FROM memories ORDER BY memory_id").fetchall()
         return tuple(_load_memory(row[0]) for row in rows)
 
@@ -202,7 +203,7 @@ class _SQLiteBackend:
         if not edges:
             return
         rows = [(edge.edge_id, edge.source_id, edge.target_id, _dump_edge(edge)) for edge in edges]
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executemany(
                 """
                 INSERT INTO edges(edge_id, source_id, target_id, payload)
@@ -213,7 +214,7 @@ class _SQLiteBackend:
             )
 
     def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
                 SELECT payload
@@ -226,7 +227,7 @@ class _SQLiteBackend:
         return tuple(edge for row in rows if not _edge_archived(edge := _load_edge(row[0])))
 
     def list_edges(self) -> tuple[MemoryEdge, ...]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute("SELECT payload FROM edges ORDER BY edge_id").fetchall()
         return tuple(edge for row in rows if not _edge_archived(edge := _load_edge(row[0])))
 
