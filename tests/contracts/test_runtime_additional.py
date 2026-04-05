@@ -33,13 +33,16 @@ def test_registry_get_and_iteration_expose_registered_plugins() -> None:
 @dataclass
 class MissingManifestPlugin:
     def configure(self, _: object) -> None:
-        pass
+        # This fixture intentionally omits a manifest but still satisfies the call shape.
+        return None
 
     def start(self) -> None:
-        pass
+        # Startup is a no-op because validation fails before runtime use.
+        return None
 
     def stop(self) -> None:
-        pass
+        # Shutdown is a no-op because validation fails before runtime use.
+        return None
 
 
 @dataclass
@@ -51,10 +54,12 @@ class MissingStopPlugin:
     )
 
     def configure(self, _: object) -> None:
-        pass
+        # The fixture only needs to satisfy configuration shape for validation.
+        return None
 
     def start(self) -> None:
-        pass
+        # Startup is a no-op because the missing stop hook is the behavior under test.
+        return None
 
 
 def test_runtime_plugin_validation_rejects_invalid_candidates() -> None:

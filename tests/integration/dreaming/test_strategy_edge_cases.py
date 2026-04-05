@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from cellin.core import (
     DecayState,
     EdgeKind,
@@ -106,7 +108,7 @@ def test_strategy_helpers_handle_empty_tokens_string_lists_and_archived_grouping
         )
     )
 
-    assert _similarity(blank_left, blank_right) == 0.0
+    assert _similarity(blank_left, blank_right) == pytest.approx(0.0)
     assert _string_list("not-a-list") == []
     assert [memory.memory_id for memory in grouped["atlas"]] == ["active"]
 

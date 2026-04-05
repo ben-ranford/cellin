@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from cellin.core import (
     DecayState,
     EdgeKind,
@@ -80,4 +82,4 @@ def test_sqlite_store_filters_archived_edges_and_vector_index_handles_empty_text
     vector_index = InMemoryVectorIndex()
     vector_index.upsert("blank", "")
 
-    assert vector_index.search("", limit=1)[0].score == 0.0
+    assert vector_index.search("", limit=1)[0].score == pytest.approx(0.0)

@@ -36,4 +36,4 @@ def test_weighted_ranker_handles_empty_query_tokens() -> None:
     scored = ranker.score("!!!", (_memory("Atlas retrieval"),))
 
     assert scored[0].factors[0].name == "semantic_similarity"
-    assert scored[0].factors[0].value == 0.0
+    assert scored[0].factors[0].value == pytest.approx(0.0)
