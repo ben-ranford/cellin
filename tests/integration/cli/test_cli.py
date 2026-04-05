@@ -91,3 +91,24 @@ def test_cli_version_flag(capsys: CaptureFixture[str]) -> None:
     assert excinfo.value.code == 0
     version_output = capsys.readouterr().out.strip()
     assert version_output.endswith(__version__)
+
+
+def test_trace_inspect_zero_and_negative_limits_emit_no_entries(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    workspace = tmp_path / "workspace"
+    config_path = workspace / "cellin.json"
+    input_path = _copy_example_input(tmp_path)
+
+    assert main(["init", "--workspace", str(workspace)]) == 0
+    capsys.readouterr()
+    assert main(["ingest", "--config", str(config_path), "--input", str(input_path)]) == 0
+    capsys.readouterr()
+
+    assert main(["trace", "inspect", "--config", str(config_path), "--limit", "0"]) == 0
+    zero_limit_output = capsys.readouterr().out
+    assert zero_limit_output.strip() == "no trace events recorded"
+
+    assert main(["trace", "inspect", "--config", str(config_path), "--limit", "-1"]) == 0
+    negative_limit_output = capsys.readouterr().out
+    assert negative_limit_output.strip() == "no trace events recorded"
