@@ -8,16 +8,19 @@ from typing import Literal, Protocol, cast
 
 from cellin.core import GraphStore, MemoryStore, VectorStore
 from cellin.stores import (
+    ArangoDBGraphStore,
     DuckDBGraphStore,
     DuckDBMemoryStore,
     InMemoryGraphStore,
     InMemoryMemoryStore,
     InMemoryVectorIndex,
+    MemgraphGraphStore,
     MilvusVectorStore,
     MongoDBGraphStore,
     MongoDBMemoryStore,
     MySQLGraphStore,
     MySQLMemoryStore,
+    Neo4jGraphStore,
     PGVectorStore,
     PineconeVectorStore,
     PostgreSQLGraphStore,
@@ -275,6 +278,33 @@ def _build_redis_graph_store(
     return RedisGraphStore(_resolve_connection_string(config, backend_name="redis"))
 
 
+def _build_neo4j_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    del workspace_root
+    return Neo4jGraphStore(_resolve_connection_string(config, backend_name="neo4j"))
+
+
+def _build_memgraph_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    del workspace_root
+    return MemgraphGraphStore(_resolve_connection_string(config, backend_name="memgraph"))
+
+
+def _build_arangodb_graph_store(
+    config: StorageBackendConfig,
+    *,
+    workspace_root: Path,
+) -> GraphStore:
+    del workspace_root
+    return ArangoDBGraphStore(_resolve_connection_string(config, backend_name="arangodb"))
+
+
 def _build_vector_store(
     config: StorageBackendConfig,
     *,
@@ -365,13 +395,16 @@ _MEMORY_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
 
 
 _GRAPH_BACKEND_REGISTRY: dict[str, BackendBuilder] = {
+    "arangodb": _build_arangodb_graph_store,
     "duckdb": _build_duckdb_graph_store,
-    "mysql": _build_mysql_graph_store,
-    "sqlite": _build_sqlite_graph_store,
-    "postgresql": _build_postgresql_graph_store,
     "in_memory": _build_in_memory_graph_store,
+    "memgraph": _build_memgraph_graph_store,
     "mongodb": _build_mongodb_graph_store,
+    "mysql": _build_mysql_graph_store,
+    "neo4j": _build_neo4j_graph_store,
+    "postgresql": _build_postgresql_graph_store,
     "redis": _build_redis_graph_store,
+    "sqlite": _build_sqlite_graph_store,
 }
 
 

@@ -44,6 +44,9 @@ name = "cellin"
 source = { editable = "." }
 
 [package.optional-dependencies]
+arangodb = [
+    { name = "python-arango" },
+]
 document-cache-backends = [
     { name = "pymongo" },
     { name = "redis" },
@@ -51,11 +54,21 @@ document-cache-backends = [
 duckdb = [
     { name = "duckdb" },
 ]
+graph-backends = [
+    { name = "neo4j" },
+    { name = "python-arango" },
+]
+memgraph = [
+    { name = "neo4j" },
+]
 mongodb = [
     { name = "pymongo" },
 ]
 mysql = [
     { name = "mysql-connector-python" },
+]
+neo4j = [
+    { name = "neo4j" },
 ]
 postgresql = [
     { name = "psycopg" },
@@ -87,14 +100,19 @@ requires-dist = [
     { name = "duckdb", marker = "extra == 'sql-backends'" },
     { name = "mysql-connector-python", marker = "extra == 'mysql'" },
     { name = "mysql-connector-python", marker = "extra == 'sql-backends'" },
+    { name = "neo4j", marker = "extra == 'graph-backends'" },
+    { name = "neo4j", marker = "extra == 'memgraph'" },
+    { name = "neo4j", marker = "extra == 'neo4j'" },
     { name = "psycopg", marker = "extra == 'postgresql'" },
     { name = "psycopg", marker = "extra == 'sql-backends'" },
     { name = "pymongo", marker = "extra == 'document-cache-backends'" },
     { name = "pymongo", marker = "extra == 'mongodb'" },
+    { name = "python-arango", marker = "extra == 'arangodb'" },
+    { name = "python-arango", marker = "extra == 'graph-backends'" },
     { name = "redis", marker = "extra == 'document-cache-backends'" },
     { name = "redis", marker = "extra == 'redis'" },
 ]
-provides-extras = ["document-cache-backends", "duckdb", "mongodb", "mysql", "postgresql", "redis", "sql-backends"]
+provides-extras = ["arangodb", "document-cache-backends", "duckdb", "graph-backends", "memgraph", "mongodb", "mysql", "neo4j", "postgresql", "redis", "sql-backends"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -852,6 +870,18 @@ wheels = [
 ]
 
 [[package]]
+name = "neo4j"
+version = "6.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1b/01/d6ce65e4647f6cb2b9cca3b813978f7329b54b4e36660aaec1ddf0ccce7a/neo4j-6.1.0.tar.gz", hash = "sha256:b5dde8c0d8481e7b6ae3733569d990dd3e5befdc5d452f531ad1884ed3500b84", size = 239629, upload-time = "2026-01-12T11:27:34.777Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/5c/ee71e2dd955045425ef44283f40ba1da67673cf06404916ca2950ac0cd39/neo4j-6.1.0-py3-none-any.whl", hash = "sha256:3bd93941f3a3559af197031157220af9fd71f4f93a311db687bd69ffa417b67d", size = 325326, upload-time = "2026-01-12T11:27:33.196Z" },
+]
+
+[[package]]
 name = "nh3"
 version = "0.3.4"
 source = { registry = "https://pypi.org/simple" }
@@ -962,6 +992,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyjwt"
+version = "2.12.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/27/a3b6e5bf6ff856d2509292e95c8f57f0df7017cf5394921fc4e4ef40308a/pyjwt-2.12.1.tar.gz", hash = "sha256:c74a7a2adf861c04d002db713dd85f84beb242228e671280bf709d765b03672b", size = 102564, upload-time = "2026-03-13T19:27:37.25Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/7a/8dd906bd22e79e47397a61742927f6747fe93242ef86645ee9092e610244/pyjwt-2.12.1-py3-none-any.whl", hash = "sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c", size = 29726, upload-time = "2026-03-13T19:27:35.677Z" },
+]
+
+[[package]]
 name = "pymdown-extensions"
 version = "10.21.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1065,6 +1104,22 @@ wheels = [
 ]
 
 [[package]]
+name = "python-arango"
+version = "8.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pyjwt" },
+    { name = "requests" },
+    { name = "requests-toolbelt" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/7a/e5a09446f8e0ca69269bbb5ddefcdfbdcfc8cfb019de382f70e4ca899170/python_arango-8.3.1.tar.gz", hash = "sha256:38d3c1f5173c99fe3c17b386963d441c96b0d38dc111353eebddbf9088459cdd", size = 154810, upload-time = "2026-03-23T06:01:11.472Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/78/e60b1b8bc8d78908c849dd320d683be3d92bf3eb7f3396a7ffd53ba9ea71/python_arango-8.3.1-py3-none-any.whl", hash = "sha256:964012b3a239bddaa6ca9851659bf74817128fdeab6fcb6e5abef0f6b817a536", size = 116245, upload-time = "2026-03-23T06:01:10.072Z" },
+]
+
+[[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }
@@ -1074,6 +1129,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
+]
+
+[[package]]
+name = "pytz"
+version = "2026.1.post1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/db/b8721d71d945e6a8ac63c0fc900b2067181dbb50805958d4d4661cf7d277/pytz-2026.1.post1.tar.gz", hash = "sha256:3378dde6a0c3d26719182142c56e60c7f9af7e968076f31aae569d72a0358ee1", size = 321088, upload-time = "2026-03-03T07:47:50.683Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/99/781fe0c827be2742bcc775efefccb3b048a3a9c6ce9aec0cbf4a101677e5/pytz-2026.1.post1-py2.py3-none-any.whl", hash = "sha256:f2fd16142fda348286a75e1a524be810bb05d444e5a081f37f7affc635035f7a", size = 510489, upload-time = "2026-03-03T07:47:49.167Z" },
 ]
 
 [[package]]
