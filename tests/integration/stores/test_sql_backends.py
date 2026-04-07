@@ -81,11 +81,30 @@ class _FakeSQLEngine:
         params = tuple(parameters)
         self.queries.append((query, params))
 
-        if "create table if not exists memories" in normalized_query:
-            return []
-        if "create table if not exists edges" in normalized_query:
+        if self._is_schema_query(normalized_query):
             return []
 
+        memory_rows = self._handle_memory_query(normalized_query, params)
+        if memory_rows is not None:
+            return memory_rows
+
+        edge_rows = self._handle_edge_query(normalized_query, params)
+        if edge_rows is not None:
+            return edge_rows
+
+        return []
+
+    def _is_schema_query(self, normalized_query: str) -> bool:
+        return (
+            "create table if not exists memories" in normalized_query
+            or "create table if not exists edges" in normalized_query
+        )
+
+    def _handle_memory_query(
+        self,
+        normalized_query: str,
+        params: tuple[object, ...],
+    ) -> list[tuple[object, ...]] | None:
         if "insert into memories" in normalized_query:
             memory_id = str(params[0])
             payload = str(params[1])
@@ -100,6 +119,13 @@ class _FakeSQLEngine:
         if "select payload from memories order by memory_id" in normalized_query:
             return [(payload,) for _, payload in sorted(self.memories.items())]
 
+        return None
+
+    def _handle_edge_query(
+        self,
+        normalized_query: str,
+        params: tuple[object, ...],
+    ) -> list[tuple[object, ...]] | None:
         if "insert into edges" in normalized_query:
             edge_id = str(params[0])
             source_id = str(params[1])
@@ -108,7 +134,7 @@ class _FakeSQLEngine:
             self.edges[edge_id] = (source_id, target_id, payload)
             return []
 
-        if "from edges" in normalized_query and "where source_id" in normalized_query:
+        if self._is_edge_neighbor_query(normalized_query):
             memory_id = str(params[0])
             rows = []
             for _, (source_id, target_id, payload) in sorted(self.edges.items()):
@@ -119,7 +145,10 @@ class _FakeSQLEngine:
         if "from edges order by edge_id" in normalized_query:
             return [(payload,) for _, (_, _, payload) in sorted(self.edges.items())]
 
-        return []
+        return None
+
+    def _is_edge_neighbor_query(self, normalized_query: str) -> bool:
+        return "from edges" in normalized_query and "where source_id" in normalized_query
 
 
 class _FakeSQLConnection:

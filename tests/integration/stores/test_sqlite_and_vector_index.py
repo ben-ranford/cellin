@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import math
 import sys
 from datetime import UTC, datetime
 
@@ -91,7 +92,7 @@ def test_sqlite_store_filters_archived_edges_and_vector_index_handles_empty_text
     vector_index = InMemoryVectorIndex()
     vector_index.upsert("blank", "")
 
-    assert vector_index.search("", limit=1)[0].score == pytest.approx(0.0)
+    assert math.isclose(vector_index.search("", limit=1)[0].score, 0.0, abs_tol=1e-12)
 
 
 def test_sqlite_vec_store_persists_vectors_and_supports_similarity_ranking(tmp_path) -> None:
@@ -235,5 +236,5 @@ def test_in_memory_vector_index_respects_search_limit_zero() -> None:
 
 
 def test_cosine_similarity_returns_zero_for_empty_vectors() -> None:
-    assert cosine_similarity((), ()) == 0.0
-    assert cosine_similarity((), (1.0, 0.0)) == 0.0
+    assert math.isclose(cosine_similarity((), ()), 0.0, abs_tol=1e-12)
+    assert math.isclose(cosine_similarity((), (1.0, 0.0)), 0.0, abs_tol=1e-12)
