@@ -85,7 +85,8 @@ class _FakeVectorStore(VectorStore):
         self._matches = tuple(matches)
 
     def upsert(self, memory_id: str, text: str) -> None:
-        pass
+        # No-op: this fake vector store only needs to satisfy the interface.
+        del memory_id, text
 
     def search(self, query: str, *, limit: int = 5) -> tuple[VectorMatch, ...]:
         del query
