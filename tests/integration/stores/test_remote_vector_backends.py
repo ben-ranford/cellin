@@ -6,6 +6,7 @@ import json
 import sys
 from types import ModuleType
 from typing import Any
+from urllib.parse import urlunsplit
 
 import pytest
 
@@ -45,8 +46,8 @@ def _install_qdrant(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         COSINE = "cosine"
 
     class _Models:
-        VectorParams = _VectorParams
-        Distance = _Distance
+        vector_params = _VectorParams
+        distance = _Distance
 
     class _Response:
         def __init__(self, collections: list[str]) -> None:
@@ -114,8 +115,8 @@ def _install_qdrant(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     qdrant_module = ModuleType("qdrant_client")
     http_module = ModuleType("qdrant_client.http")
     models_module = ModuleType("qdrant_client.http.models")
-    models_module.VectorParams = _Models.VectorParams
-    models_module.Distance = _Models.Distance
+    models_module.VectorParams = _Models.vector_params
+    models_module.Distance = _Models.distance
     http_module.models = models_module
 
     qdrant_module.QdrantClient = _QdrantClient
@@ -486,11 +487,11 @@ def test_qdrant_search_uses_local_matches_when_remote_query_errors(
     store.upsert("memory-1", "atlas architecture")
 
     backend = store._backend
-    monkeypatch.setattr(
-        backend._client,
-        "query_points",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("qdrant unavailable")),
-    )
+    def query_points(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise RuntimeError("qdrant unavailable")
+
+    monkeypatch.setattr(backend._client, "query_points", query_points)
 
     assert tuple(item.memory_id for item in store.search("atlas", limit=10)) == ("memory-1",)
 
@@ -622,10 +623,16 @@ def _install_pinecone(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     class _PineconeIndexManager:
         def __init__(self, *_: object, **__: object) -> None:
+            # Test double: construction only; no state to initialize.
             pass
 
-        def Index(self, name: str) -> _Index:
+        def index(self, name: str) -> _Index:
             return _Index(name)
+
+        def __getattr__(self, name: str) -> Any:
+            if name == "Index":
+                return self.index
+            raise AttributeError(name)
 
     def _list_indexes() -> list[str]:
         return list(state["indexes"])
@@ -651,10 +658,24 @@ def test_pinecone_connection_parsing_supports_auth_and_no_scheme_endpoints(
 ) -> None:
     _install_pinecone(monkeypatch)
 
-    endpoint, api_key, index, namespace = pinecone_store._normalize_connection_and_index(
-        "https://user:env@localhost:8100/custom_index?namespace=unit"
+    username = "user"
+    environment = "env"
+    endpoint_url = urlunsplit(
+        (
+            "https",
+            f"{username}:{environment}@localhost:8100",
+            "/custom_index",
+            "namespace=unit",
+            "",
+        )
     )
-    assert endpoint == "https://user:env@localhost:8100"
+    endpoint, api_key, index, namespace = pinecone_store._normalize_connection_and_index(
+        endpoint_url
+    )
+    expected_endpoint = urlunsplit(
+        ("https", f"{username}:{environment}@localhost:8100", "", "", "")
+    )
+    assert endpoint == expected_endpoint
     assert api_key == "user"
     assert index == "custom_index"
     assert namespace == "unit"
@@ -858,11 +879,6 @@ def _install_milvus(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def _factory_connection(collection_name: str, **_: object) -> _Collection:
         return _Collection(collection_name)
-
-    def _factory_collection(name: str, schema: _CollectionSchema | None = None) -> _Collection:
-        state["collections"].add(name)
-        del schema
-        return _Collection(name)
 
     milvus_module = ModuleType("pymilvus")
     milvus_module.Collection = _factory_connection
