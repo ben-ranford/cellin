@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 import cellin.evals.runner as eval_runner
 from cellin.core import (
     DecayState,
@@ -39,7 +41,8 @@ class _VectorStore(VectorStore):
         self.calls = 0
 
     def upsert(self, memory_id: str, text: str) -> None:
-        pass
+        self.calls += 1
+        del memory_id, text
 
     def search(self, query: str, *, limit: int = 5) -> tuple[VectorMatch, ...]:
         del query
@@ -58,7 +61,7 @@ def test_smoke_suite_writes_report_with_deltas(tmp_path: Path) -> None:
     assert output_path.exists()
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["suite"] == "smoke"
-    assert payload["summary_metrics"]["case_count"] == 3.0
+    assert payload["summary_metrics"]["case_count"] == pytest.approx(3.0)
     assert payload["cases"][2]["case_id"] == "dream-atlas"
     assert "delta_metrics" in payload["cases"][2]
 

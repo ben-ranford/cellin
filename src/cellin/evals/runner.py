@@ -35,7 +35,7 @@ from cellin.runtime.storage import StorageConfig, build_storage_bundle
 
 
 def _json_float_map(values: dict[str, float]) -> dict[str, JSONValue]:
-    return {key: value for key, value in values.items()}
+    return dict(values)
 
 
 def _token_cost(bundle_memories: tuple[ScoredMemory, ...]) -> float:
