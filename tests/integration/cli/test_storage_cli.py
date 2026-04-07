@@ -11,6 +11,10 @@ from cellin.cli import main
 from cellin.cli.config import DEFAULT_CONFIG_FILENAME
 
 
+def _workspace_config_path(workspace: Path) -> Path:
+    return next(path for path in workspace.iterdir() if path.name == DEFAULT_CONFIG_FILENAME)
+
+
 def _write_storage_config(config_path: Path, storage: dict[str, object]) -> Path:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["storage"] = storage
@@ -31,10 +35,10 @@ def test_cli_storage_init_dry_run_reports_default_in_memory_preset(
     capsys: CaptureFixture[str],
 ) -> None:
     workspace = tmp_path / "workspace"
-    config_path = workspace / DEFAULT_CONFIG_FILENAME
 
     assert main(["init", "--workspace", str(workspace)]) == 0
     capsys.readouterr()
+    config_path = _workspace_config_path(workspace)
 
     assert main(["storage", "init", "--config", str(config_path), "--dry-run"]) == 0
 
@@ -50,10 +54,10 @@ def test_cli_storage_init_initializes_sqlite_and_records_trace(
     capsys: CaptureFixture[str],
 ) -> None:
     workspace = tmp_path / "workspace"
-    config_path = workspace / DEFAULT_CONFIG_FILENAME
 
     assert main(["init", "--workspace", str(workspace)]) == 0
     capsys.readouterr()
+    config_path = _workspace_config_path(workspace)
     _write_storage_config(
         config_path,
         {
