@@ -487,6 +487,7 @@ def test_qdrant_search_uses_local_matches_when_remote_query_errors(
     store.upsert("memory-1", "atlas architecture")
 
     backend = store._backend
+
     def query_points(*args: object, **kwargs: object) -> object:
         del args, kwargs
         raise RuntimeError("qdrant unavailable")
