@@ -9,6 +9,10 @@ import pytest
 
 from cellin.stores import graph_backends
 
+NEO4J_CONNECTION_URL = "bolt://neo4j:placeholder@localhost:7687"
+ARANGO_CONNECTION_URL = "arangodb://root:placeholder@localhost:8529/cellin"
+ARANGO_PASSWORD = "placeholder"
+
 
 def test_graph_backends_require_optional_dependencies(
     monkeypatch: pytest.MonkeyPatch,
@@ -35,7 +39,7 @@ def test_graph_backends_require_optional_dependencies(
         match="neo4j backend requires optional dependency `neo4j`",
     ):
         graph_backends._CypherGraphBackend(
-            "bolt://neo4j:test@localhost:7687",
+            NEO4J_CONNECTION_URL,
             backend_name="neo4j",
         )
 
@@ -43,17 +47,17 @@ def test_graph_backends_require_optional_dependencies(
         graph_backends._MissingArangoDependencyError,
         match="arangodb backend requires optional dependency `python-arango`",
     ):
-        graph_backends._ArangoGraphBackend("arangodb://root:test@localhost:8529/cellin")
+        graph_backends._ArangoGraphBackend(ARANGO_CONNECTION_URL)
 
 
 def test_parse_arango_connection_string_defaults_and_validation() -> None:
     assert graph_backends._parse_arango_connection_string(
-        "arangodb://root:test@localhost:8529/cellin"
+        ARANGO_CONNECTION_URL
     ) == graph_backends._ArangoConnectionInfo(
         hosts="http://localhost:8529",
         database="cellin",
         username="root",
-        password="test",
+        password=ARANGO_PASSWORD,
     )
 
     assert graph_backends._parse_arango_connection_string("https://localhost") == (

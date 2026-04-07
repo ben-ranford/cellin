@@ -8,6 +8,9 @@ import pytest
 
 from cellin.stores import sql_backends
 
+MYSQL_CONNECTION_URL = "mysql://user:placeholder@localhost:3306/cellin"
+MYSQL_PASSWORD = "placeholder"
+
 
 class _NullResultConnection:
     def __enter__(self) -> _NullResultConnection:
@@ -81,10 +84,10 @@ def test_sql_backends_build_with_missing_dependencies(monkeypatch: pytest.Monkey
 
 
 def test_parse_mysql_connection_string_and_memory_path_resolution() -> None:
-    assert sql_backends._parse_mysql_connection_string("mysql://user:pw@localhost:3306/cellin") == (
+    assert sql_backends._parse_mysql_connection_string(MYSQL_CONNECTION_URL) == (
         sql_backends._MySQLConnectionParams(
             user="user",
-            password="pw",
+            password=MYSQL_PASSWORD,
             host="localhost",
             port=3306,
             database="cellin",
