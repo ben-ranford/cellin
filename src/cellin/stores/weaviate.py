@@ -183,7 +183,7 @@ class _WeaviateBackend:
             metadata = _coerce_mapping(getattr(obj, "metadata", None))
             raw_score = metadata.get("certainty", 0.0)
             score = float(raw_score) if isinstance(raw_score, int | float) else 0.0
-            if score == 0.0:
+            if not score:
                 score = cosine_similarity(query_vector, self._vectors.get(memory_id, ()))
             matches.append(VectorMatch(memory_id=memory_id, score=round(max(score, 0.0), 6)))
         return matches

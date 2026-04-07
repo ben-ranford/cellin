@@ -169,7 +169,7 @@ class _QdrantBackend:
                 continue
 
             score = float(getattr(raw_point, "score", 0.0))
-            if score == 0.0 and vector:
+            if not score and vector:
                 score = cosine_similarity(query_vector, vector)
             matches.append(VectorMatch(memory_id=memory_id, score=round(max(score, 0.0), 6)))
         return matches
