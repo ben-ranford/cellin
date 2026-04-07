@@ -48,6 +48,8 @@ jobs:
       - name: Resolve package version
         id: version
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             resolved_version="$(python -m uv run python scripts/release/resolve_preview_version.py \
@@ -59,7 +61,7 @@ jobs:
               --expect-version "${resolved_version}" \
               --release-kind preview
           else
-            resolved_version="${{ inputs.version }}"
+            resolved_version="${RELEASE_VERSION}"
             if [ -z "${resolved_version}" ]; then
               echo "workflow_dispatch requires a release-candidate version input" >&2
               exit 1
