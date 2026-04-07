@@ -285,15 +285,14 @@ class DeduplicationDreamStrategy:
         duplicate: MemoryAtom,
         at: datetime,
     ) -> tuple[MemoryAtom, MemoryAtom]:
-        deduplicated_ids: list[JSONValue] = [
-            memory_id
-            for memory_id in sorted(
+        deduplicated_ids: list[JSONValue] = list(
+            sorted(
                 {
                     *_string_list(canonical.metadata.get("deduplicated_memory_ids")),
                     duplicate.memory_id,
                 }
             )
-        ]
+        )
         canonical_after = replace(
             canonical,
             salience_score=min(1.0, canonical.salience_score + 0.05),
@@ -561,7 +560,7 @@ class AbstractionDreamStrategy:
             created_at=when,
             summary=f"Created {len(created_ids)} summary memories.",
             affected_memory_ids=tuple(created_ids),
-            metadata={"created_memory_ids": [memory_id for memory_id in created_ids]},
+            metadata={"created_memory_ids": list(created_ids)},
         )
         diff = DreamDiff(
             run_id=run_id,
@@ -569,6 +568,6 @@ class AbstractionDreamStrategy:
             created_at=when,
             memory_changes=tuple(memory_changes),
             edge_changes=tuple(edge_changes),
-            notes={"created_memory_ids": [memory_id for memory_id in created_ids]},
+            notes={"created_memory_ids": list(created_ids)},
         )
         return DreamRunResult(artifact=artifact, diff=diff)
