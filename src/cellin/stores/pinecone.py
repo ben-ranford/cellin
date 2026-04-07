@@ -25,10 +25,6 @@ def _normalize_connection_and_index(connection_string: str) -> tuple[str, str | 
     if api_key is None and parsed.username:
         api_key = parsed.username
 
-    environment = query.get("environment", [None])[0]
-    if environment is None and parsed.password:
-        environment = parsed.password
-
     path_index = parsed.path.strip("/") if "://" in connection_string else ""
     index_from_query = query.get("index", [])
     index_name = path_index or (index_from_query[0] if index_from_query else "cellin_vectors")
