@@ -9,7 +9,7 @@ import pytest
 from cellin.stores import sql_backends
 
 MYSQL_CONNECTION_URL = "mysql://user:placeholder@localhost:3306/cellin"
-MYSQL_PASSWORD = "placeholder"
+MYSQL_CREDENTIAL = "placeholder"
 
 
 class _NullResultConnection:
@@ -87,7 +87,7 @@ def test_parse_mysql_connection_string_and_memory_path_resolution() -> None:
     assert sql_backends._parse_mysql_connection_string(MYSQL_CONNECTION_URL) == (
         sql_backends._MySQLConnectionParams(
             user="user",
-            password=MYSQL_PASSWORD,
+            password=MYSQL_CREDENTIAL,
             host="localhost",
             port=3306,
             database="cellin",

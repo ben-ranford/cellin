@@ -11,7 +11,7 @@ from cellin.stores import graph_backends
 
 NEO4J_CONNECTION_URL = "bolt://neo4j:placeholder@localhost:7687"
 ARANGO_CONNECTION_URL = "arangodb://root:placeholder@localhost:8529/cellin"
-ARANGO_PASSWORD = "placeholder"
+ARANGO_CREDENTIAL = "placeholder"
 
 
 def test_graph_backends_require_optional_dependencies(
@@ -57,7 +57,7 @@ def test_parse_arango_connection_string_defaults_and_validation() -> None:
         hosts="http://localhost:8529",
         database="cellin",
         username="root",
-        password=ARANGO_PASSWORD,
+        password=ARANGO_CREDENTIAL,
     )
 
     assert graph_backends._parse_arango_connection_string("https://localhost") == (
