@@ -17,6 +17,12 @@ make release-smoke
 ```
 
 `make bootstrap` installs the local git hooks through `lefthook`.
+If `lefthook` is unavailable in your environment, install hooks with:
+
+```bash
+npx @evilmartians/lefthook install
+```
+
 `make release-smoke` is the canonical local release gate. It runs formatting checks,
 linting, type-checking, tests, eval smoke coverage, docs validation, version checks,
 and package smoke validation.
