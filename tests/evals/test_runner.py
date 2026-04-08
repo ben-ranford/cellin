@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +13,7 @@ import cellin.evals.runner as eval_runner
 from cellin.core import (
     DecayState,
     MemoryAtom,
+    MemoryBundle,
     MemoryKind,
     Modality,
     Provenance,
@@ -93,3 +95,74 @@ def test_runner_retriever_exposes_vector_signal_in_ranking() -> None:
 
     assert bundle.memories[0].memory.memory_id == "memory-b"
     assert bundle.memories[0].factors[7].name == "vector_similarity"
+
+
+def test_retrieval_case_with_empty_bundle_does_not_index_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _EmptyRetriever:
+        def retrieve(self, query: str, top_k: int = 5) -> MemoryBundle:
+            del query, top_k
+            return MemoryBundle(query="atlas retrieval", memories=(), total_score=0.0)
+
+    monkeypatch.setattr(eval_runner, "_retriever", lambda *args, **kwargs: _EmptyRetriever())
+    case = eval_runner._run_retrieval_case(
+        benchmark_index=0,
+        corpus_name="project_memory",
+        case_id="retrieval-project",
+    )
+    assert case.status == "failed"
+    assert case.metrics["top_score"] == 0.0
+    assert case.metrics["hit_rate"] == 0.0
+
+
+def test_dream_case_with_empty_bundle_reports_failure_without_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _EmptyRetriever:
+        def retrieve(self, query: str, top_k: int = 5) -> MemoryBundle:
+            del query, top_k
+            return MemoryBundle(query="atlas planning", memories=(), total_score=0.0)
+
+    monkeypatch.setattr(eval_runner, "_retriever", lambda *args, **kwargs: _EmptyRetriever())
+    case = eval_runner._run_dream_case()
+    assert case.status == "failed"
+    assert case.metrics["top_score"] == 0.0
+    assert case.notes["diff"]
+
+
+def test_ingest_case_with_empty_vector_output_is_hardened(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _EmptyVectorStore:
+        def search(self, query: str, *, limit: int = 5) -> tuple[object, ...]:
+            del query, limit
+            return ()
+
+    class _MemoryBundle:
+        def __init__(self) -> None:
+            self.vector_store = _EmptyVectorStore()
+            self.graph_store = SimpleNamespace()
+            self.memory_store = SimpleNamespace()
+
+    class _FakeIngestor:
+        @classmethod
+        def with_built_in_adapters(
+            cls, graph_store: object, memory_store: object, vector_store: object
+        ) -> "_FakeIngestor":
+            del graph_store, memory_store, vector_store
+            return cls()
+
+        def ingest_envelopes(self, envelopes: tuple[object, ...]) -> SimpleNamespace:
+            del envelopes
+            return SimpleNamespace(memories=(1, 2, 3, 4), edges=(1, 2))
+
+    monkeypatch.setattr(eval_runner, "build_storage_bundle", lambda *args, **kwargs: _MemoryBundle())
+    monkeypatch.setattr(
+        eval_runner.CanonicalIngestor, "with_built_in_adapters", _FakeIngestor.with_built_in_adapters
+    )
+
+    case = eval_runner._run_ingest_case()
+    assert case.status == "ok"
+    assert case.metrics["vector_top_score"] == 0.0
+    assert case.notes["top_memory_id"] is None

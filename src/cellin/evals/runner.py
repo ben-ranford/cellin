@@ -13,6 +13,7 @@ from cellin.core import (
     GraphStore,
     MemoryAtom,
     MemoryEdge,
+    VectorMatch,
     MemoryStore,
     Provenance,
     ScoredMemory,
@@ -48,6 +49,22 @@ def _token_cost(bundle_memories: tuple[ScoredMemory, ...]) -> float:
             continue
         total += len(memory.text.split())
     return float(total)
+
+
+def _top_vector_score(results: tuple[VectorMatch, ...]) -> float:
+    return results[0].score if results else 0.0
+
+
+def _top_vector_memory_id(results: tuple[VectorMatch, ...]) -> str | None:
+    return results[0].memory_id if results else None
+
+
+def _top_memory_id(memories: tuple[ScoredMemory, ...]) -> str | None:
+    return memories[0].memory.memory_id if memories else None
+
+
+def _top_bundle_score(memories: tuple[ScoredMemory, ...]) -> float:
+    return memories[0].score if memories else 0.0
 
 
 class _InMemoryMemoryStore(MemoryStore):
@@ -199,7 +216,7 @@ def _run_ingest_case() -> EvaluationCaseResult:
         metrics = {
             "memory_count": float(memory_count),
             "edge_count": float(edge_count),
-            "vector_top_score": vector_results[0].score,
+            "vector_top_score": _top_vector_score(vector_results),
         }
         baseline = {"memory_count": 4.0, "edge_count": 2.0, "vector_top_score": 0.0}
         status = "ok" if memory_count == 4 and edge_count >= 2 else "failed"
@@ -209,7 +226,7 @@ def _run_ingest_case() -> EvaluationCaseResult:
             metrics=metrics,
             baseline_metrics=baseline,
             delta_metrics=_delta(metrics, baseline),
-            notes={"top_memory_id": vector_results[0].memory_id},
+            notes={"top_memory_id": _top_vector_memory_id(vector_results)},
         )
 
 
@@ -228,7 +245,7 @@ def _run_retrieval_case(
     )
     actual_ids = tuple(item.memory.memory_id for item in bundle.memories)
     hit_rate = float(actual_ids == benchmark.expected_memory_ids)
-    metrics = {"hit_rate": hit_rate, "top_score": bundle.memories[0].score}
+    metrics = {"hit_rate": hit_rate, "top_score": _top_bundle_score(bundle.memories)}
     baseline = {"hit_rate": 1.0}
     return EvaluationCaseResult(
         case_id=case_id,
@@ -269,7 +286,7 @@ def _run_dream_case() -> EvaluationCaseResult:
     }
     status = (
         "ok"
-        if after.memories[0].memory.memory_id == benchmark.expected_top_memory_id_after
+        if _top_memory_id(after.memories) == benchmark.expected_top_memory_id_after
         and metrics["score_gain"] >= benchmark.minimum_score_gain
         else "failed"
     )

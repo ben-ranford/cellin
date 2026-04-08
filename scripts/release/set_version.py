@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
-from _versioning import replace_assigned_version
+from _versioning import normalize_release_path, replace_assigned_version
 
 
 def main() -> int:
@@ -19,7 +18,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    version_path = Path(args.version_path)
+    version_path = normalize_release_path(args.version_path)
     updated = replace_assigned_version(version_path.read_text(encoding="utf-8"), args.version)
     version_path.write_text(updated, encoding="utf-8")
     print(f"version={args.version}")

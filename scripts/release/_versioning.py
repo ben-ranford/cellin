@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 VERSION_VALUE_PATTERN = r"\d+\.\d+\.\d+(?:(?:a|b|rc)\d+|\.dev\d+)?"
@@ -20,6 +21,20 @@ CONVENTIONAL_PATTERN = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]+\))?(?P<breaking>
 
 Bump = Literal["patch", "minor", "major"]
 ReleaseKind = Literal["stable", "prerelease", "preview"]
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def normalize_release_path(path: str, *, relative_to: Path | None = None) -> Path:
+    """
+    Normalize release script paths to a canonical absolute location.
+
+    Relative paths resolve from the repository root by default.
+    """
+
+    resolved_base = REPO_ROOT if relative_to is None else relative_to
+    normalized = Path(path).expanduser()
+    return (normalized if normalized.is_absolute() else resolved_base / normalized).resolve()
 
 
 @dataclass(frozen=True)

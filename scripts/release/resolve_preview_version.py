@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-from pathlib import Path
 
 from _versioning import (
     CommitMessage,
     build_preview_version,
     derive_preview_base_version,
     load_assigned_version,
+    normalize_release_path,
     select_latest_stable_tag,
     stable_base_version,
 )
@@ -62,7 +62,9 @@ def main() -> int:
     build_id = f"{args.run_id}{int(args.run_attempt):02d}"
     stable_tag = _latest_stable_tag(args.ref)
     if stable_tag is None:
-        current_version = load_assigned_version(Path(args.version_path).read_text(encoding="utf-8"))
+        current_version = load_assigned_version(
+            normalize_release_path(args.version_path).read_text(encoding="utf-8")
+        )
         stable_version = stable_base_version(current_version)
         commits = _commit_messages(args.ref)
     else:
