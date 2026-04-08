@@ -285,13 +285,11 @@ class DeduplicationDreamStrategy:
         duplicate: MemoryAtom,
         at: datetime,
     ) -> tuple[MemoryAtom, MemoryAtom]:
-        deduplicated_ids: list[JSONValue] = list(
-            sorted(
-                {
-                    *_string_list(canonical.metadata.get("deduplicated_memory_ids")),
-                    duplicate.memory_id,
-                }
-            )
+        deduplicated_ids: list[JSONValue] = sorted(
+            {
+                *_string_list(canonical.metadata.get("deduplicated_memory_ids")),
+                duplicate.memory_id,
+            }
         )
         canonical_after = replace(
             canonical,
