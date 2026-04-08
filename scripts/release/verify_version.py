@@ -32,8 +32,7 @@ def validate_pyproject(pyproject_path: Path, version_path: Path) -> None:
     )
     if normalized_configured != version_path:
         raise ValueError(
-            "tool.hatch.version.path must be "
-            f"{str(version_path)!r}, found {configured_path!r}"
+            f"tool.hatch.version.path must be {str(version_path)!r}, found {configured_path!r}"
         )
 
 

@@ -149,7 +149,7 @@ def test_ingest_case_with_empty_vector_output_is_hardened(
         @classmethod
         def with_built_in_adapters(
             cls, graph_store: object, memory_store: object, vector_store: object
-        ) -> "_FakeIngestor":
+        ) -> _FakeIngestor:
             del graph_store, memory_store, vector_store
             return cls()
 
@@ -157,9 +157,13 @@ def test_ingest_case_with_empty_vector_output_is_hardened(
             del envelopes
             return SimpleNamespace(memories=(1, 2, 3, 4), edges=(1, 2))
 
-    monkeypatch.setattr(eval_runner, "build_storage_bundle", lambda *args, **kwargs: _MemoryBundle())
     monkeypatch.setattr(
-        eval_runner.CanonicalIngestor, "with_built_in_adapters", _FakeIngestor.with_built_in_adapters
+        eval_runner, "build_storage_bundle", lambda *args, **kwargs: _MemoryBundle()
+    )
+    monkeypatch.setattr(
+        eval_runner.CanonicalIngestor,
+        "with_built_in_adapters",
+        _FakeIngestor.with_built_in_adapters,
     )
 
     case = eval_runner._run_ingest_case()

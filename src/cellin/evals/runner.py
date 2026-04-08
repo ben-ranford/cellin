@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,10 +14,10 @@ from cellin.core import (
     GraphStore,
     MemoryAtom,
     MemoryEdge,
-    VectorMatch,
     MemoryStore,
     Provenance,
     ScoredMemory,
+    VectorMatch,
     VectorStore,
 )
 from cellin.core.models import JSONValue
@@ -51,19 +52,19 @@ def _token_cost(bundle_memories: tuple[ScoredMemory, ...]) -> float:
     return float(total)
 
 
-def _top_vector_score(results: tuple[VectorMatch, ...]) -> float:
+def _top_vector_score(results: Sequence[VectorMatch]) -> float:
     return results[0].score if results else 0.0
 
 
-def _top_vector_memory_id(results: tuple[VectorMatch, ...]) -> str | None:
+def _top_vector_memory_id(results: Sequence[VectorMatch]) -> str | None:
     return results[0].memory_id if results else None
 
 
-def _top_memory_id(memories: tuple[ScoredMemory, ...]) -> str | None:
+def _top_memory_id(memories: Sequence[ScoredMemory]) -> str | None:
     return memories[0].memory.memory_id if memories else None
 
 
-def _top_bundle_score(memories: tuple[ScoredMemory, ...]) -> float:
+def _top_bundle_score(memories: Sequence[ScoredMemory]) -> float:
     return memories[0].score if memories else 0.0
 
 
