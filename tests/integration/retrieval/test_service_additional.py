@@ -16,12 +16,13 @@ from cellin.core import (
     Modality,
     Provenance,
     RetrievalStats,
+    ScoredMemory,
 )
 from cellin.ranking import WeightedRanker, get_weight_profile
 from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
 
 
-def _memory(memory_id: str, text: str) -> MemoryAtom:
+def _memory(memory_id: str, text: str, *, token_count: int | None = 3) -> MemoryAtom:
     now = datetime(2026, 4, 5, tzinfo=UTC)
     return MemoryAtom(
         memory_id=memory_id,
@@ -33,7 +34,7 @@ def _memory(memory_id: str, text: str) -> MemoryAtom:
         observed_at=now,
         decay=DecayState(half_life_days=14.0),
         retrieval=RetrievalStats(),
-        metadata={"token_count": 3},
+        metadata={"token_count": token_count} if token_count is not None else {},
     )
 
 
@@ -74,3 +75,34 @@ def test_retriever_fit_to_budget_returns_empty_when_budget_is_non_positive() -> 
     )
 
     assert retriever._fit_to_budget((), token_budget=0) == ()
+
+
+def test_retriever_returns_empty_for_non_positive_top_k() -> None:
+    profile = get_weight_profile("balanced")
+    retriever = WeightedRetriever(
+        candidate_generator=create_autospec(RetrievalCandidateGenerator, instance=True),
+        ranker=WeightedRanker(profile=profile),
+        profile=profile,
+    )
+
+    assert retriever.retrieve("Atlas query", top_k=0).memories == ()
+    assert retriever.retrieve("Atlas query", top_k=-2).memories == ()
+
+
+def test_fit_to_budget_treats_negative_token_count_as_minimum_one() -> None:
+    profile = get_weight_profile("balanced")
+    retriever = WeightedRetriever(
+        candidate_generator=create_autospec(RetrievalCandidateGenerator, instance=True),
+        ranker=WeightedRanker(profile=profile),
+        profile=profile,
+    )
+    item_one = ScoredMemory(
+        memory=_memory("negative", "negative token count", token_count=-4),
+        score=1.0,
+    )
+    item_two = ScoredMemory(
+        memory=_memory("positive", "positive token count", token_count=3),
+        score=0.8,
+    )
+    selected = retriever._fit_to_budget((item_one, item_two), token_budget=3)
+    assert selected == (item_one,)
