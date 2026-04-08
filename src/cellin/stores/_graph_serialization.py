@@ -51,6 +51,14 @@ def _require_number(value: object, *, field_name: str) -> float:
     return float(value)
 
 
+def _require_optional_number(
+    value: object, *, field_name: str, default: float | None = None
+) -> float | None:
+    if value is None:
+        return default
+    return _require_number(value, field_name=field_name)
+
+
 def _require_list(value: object, *, field_name: str) -> Sequence[object]:
     if not isinstance(value, list):
         raise TypeError(f"{field_name} payload must be a list")
@@ -126,7 +134,7 @@ def load_memory_payload(raw: Mapping[str, object]) -> MemoryAtom:
         trust_score=_require_number(raw.get("trust_score"), field_name="trust_score"),
         decay=DecayState(
             archived=bool(decay.get("archived", False)),
-            half_life_days=_require_number(
+            half_life_days=_require_optional_number(
                 decay.get("half_life_days"),
                 field_name="decay.half_life_days",
             ),

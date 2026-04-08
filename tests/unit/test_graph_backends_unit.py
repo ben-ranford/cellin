@@ -101,6 +101,30 @@ def test_load_memory_rejects_invalid_provenance_metadata_shape() -> None:
         _graph_serialization.load_memory(json.dumps(payload))
 
 
+@pytest.mark.parametrize("half_life_days", [None, "missing"])
+def test_load_memory_accepts_optional_half_life_days(
+    half_life_days: None | str,
+) -> None:
+    memory = MemoryAtom(
+        memory_id="memory-1",
+        kind=MemoryKind.ATOM,
+        text="Atlas memory",
+        provenance=Provenance(source_id="memory-1", source_type="fixture"),
+        modality=Modality.TEXT,
+        created_at=datetime(2026, 4, 8, tzinfo=UTC),
+        observed_at=datetime(2026, 4, 8, tzinfo=UTC),
+        metadata={},
+    )
+    payload = json.loads(_graph_serialization.dump_memory(memory))
+    if half_life_days == "missing":
+        payload["decay"].pop("half_life_days", None)
+    else:
+        payload["decay"]["half_life_days"] = half_life_days
+
+    loaded = _graph_serialization.load_memory(json.dumps(payload))
+    assert loaded.decay.half_life_days is None
+
+
 def test_load_edge_rejects_invalid_provenance_metadata_shape() -> None:
     edge = MemoryEdge(
         edge_id="edge-1",
