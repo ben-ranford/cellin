@@ -338,7 +338,7 @@ def test_load_storage_backends_from_entry_points_supports_provider_sequences(
     assert loaded == ("memory:sequence_memory_one", "graph:sequence_graph_two")
 
 
-def test_load_storage_backends_from_entry_points_reports_only_new_backends_when_duplicates_are_loaded(
+def test_load_storage_backends_reports_only_new_backends_for_duplicates(
     storage_registry_snapshot: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
