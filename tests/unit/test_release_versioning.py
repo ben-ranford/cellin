@@ -76,3 +76,24 @@ def test_select_latest_stable_tag_ignores_preview_and_candidate_tags() -> None:
     tags = ["v0.2.1.dev2399631184001", "v0.2.1rc1", "v0.2.0", "v0.1.1"]
 
     assert release_versioning.select_latest_stable_tag(tags) == "v0.2.0"
+
+
+def test_normalize_release_path_uses_repository_root_by_default() -> None:
+    normalized = release_versioning.normalize_release_path("src/cellin/__about__.py")
+
+    assert normalized == (release_versioning.REPO_ROOT / "src" / "cellin" / "__about__.py")
+
+
+def test_normalize_release_path_uses_custom_base_for_relative_inputs() -> None:
+    base = Path("test-path-root")
+    expected = (base / "pyproject.toml").resolve()
+
+    assert release_versioning.normalize_release_path("pyproject.toml", relative_to=base) == expected
+
+
+def test_normalize_release_path_ignores_base_for_absolute_paths(
+    tmp_path: Path,
+) -> None:
+    absolute = (tmp_path / "cellin-test-about.py").resolve()
+
+    assert release_versioning.normalize_release_path(str(absolute)) == absolute

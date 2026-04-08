@@ -8,14 +8,18 @@ import sys
 import tomllib
 from pathlib import Path
 
-from _versioning import load_assigned_version, validate_release_kind
+from _versioning import (
+    load_assigned_version,
+    normalize_release_path,
+    validate_release_kind,
+)
 
 
 def load_version(version_path: Path) -> str:
     return load_assigned_version(version_path.read_text(encoding="utf-8"))
 
 
-def validate_pyproject(pyproject_path: Path, version_path: str) -> None:
+def validate_pyproject(pyproject_path: Path, version_path: Path) -> None:
     payload = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
     project = payload["project"]
     dynamic = project.get("dynamic", [])
@@ -23,9 +27,12 @@ def validate_pyproject(pyproject_path: Path, version_path: str) -> None:
         raise ValueError("pyproject.toml must declare project.dynamic = ['version']")
 
     configured_path = payload["tool"]["hatch"]["version"]["path"]
-    if configured_path != version_path:
+    normalized_configured = normalize_release_path(
+        configured_path, relative_to=pyproject_path.parent
+    )
+    if normalized_configured != version_path:
         raise ValueError(
-            f"tool.hatch.version.path must be {version_path!r}, found {configured_path!r}"
+            f"tool.hatch.version.path must be {str(version_path)!r}, found {configured_path!r}"
         )
 
 
@@ -56,10 +63,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    version_path = Path(args.version_path)
-    pyproject_path = Path(args.pyproject_path)
+    version_path = normalize_release_path(args.version_path)
+    pyproject_path = normalize_release_path(args.pyproject_path)
     version = load_version(version_path)
-    validate_pyproject(pyproject_path, args.version_path)
+    validate_pyproject(pyproject_path, version_path)
     if args.release_kind != "any":
         validate_release_kind(version, args.release_kind)
 
