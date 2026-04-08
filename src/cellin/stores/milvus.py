@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 import warnings
+from collections.abc import Sequence
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
