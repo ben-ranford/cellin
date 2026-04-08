@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import quote
 
 from cellin.core import (
     Artifact,
@@ -20,6 +21,12 @@ from cellin.core import (
 )
 from cellin.ingest.adapters import EnvelopeAdapter, built_in_adapters
 from cellin.ingest.envelope import ArtifactEnvelope, IngestionBatchResult
+
+
+def _collision_free_edge_id(*, kind: EdgeKind, source_id: str, target_id: str) -> str:
+    """Build an edge identifier that cannot collide when IDs contain delimiters."""
+
+    return f"{kind.value}:{quote(source_id, safe='')}:{quote(target_id, safe='')}"
 
 
 @dataclass(slots=True)
@@ -185,7 +192,11 @@ class CanonicalIngestor:
         label: str,
     ) -> MemoryEdge:
         return MemoryEdge(
-            edge_id=f"{kind.value}:{source_id}:{target_id}",
+            edge_id=_collision_free_edge_id(
+                kind=kind,
+                source_id=source_id,
+                target_id=target_id,
+            ),
             source_id=source_id,
             target_id=target_id,
             kind=kind,

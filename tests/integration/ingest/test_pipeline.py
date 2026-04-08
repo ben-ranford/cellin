@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
+from urllib.parse import quote
 
 from cellin.core import Modality
 from cellin.ingest import ArtifactEnvelope, CanonicalIngestor
@@ -27,6 +28,23 @@ def _load_fixture() -> tuple[ArtifactEnvelope, ...]:
             metadata=item["metadata"],
         )
         for item in raw_dataset
+    )
+
+
+def _build_envelope(
+    envelope_id: str,
+    *,
+    observed_at: datetime,
+    topic: str,
+) -> ArtifactEnvelope:
+    return ArtifactEnvelope(
+        envelope_id=envelope_id,
+        modality=Modality.TEXT,
+        payload=envelope_id,
+        source_id=f"source-{envelope_id}",
+        source_type="fixture",
+        observed_at=observed_at,
+        metadata={"topic": topic},
     )
 
 
@@ -90,3 +108,34 @@ def test_ingestion_pipeline_batches_sqlite_writes_for_shared_store(tmp_path, mon
 
     assert len(result.memories) == 4
     assert connect_calls == 2
+
+
+def test_ingestion_pipeline_uses_collision_safe_sqlite_edge_ids(tmp_path) -> None:
+    database_path = tmp_path / "cellin.sqlite"
+    graph_store = SQLiteGraphStore(str(database_path))
+    memory_store = SQLiteMemoryStore(str(database_path))
+    vector_index = InMemoryVectorIndex()
+    ingestor = CanonicalIngestor.with_built_in_adapters(
+        graph_store=graph_store,
+        memory_store=memory_store,
+        vector_store=vector_index,
+    )
+    observed_at = datetime(2026, 4, 5, tzinfo=UTC)
+
+    result = ingestor.ingest_envelopes(
+        (
+            _build_envelope("a:b", observed_at=observed_at, topic="topic-a"),
+            _build_envelope("c", observed_at=observed_at, topic="topic-a"),
+            _build_envelope("a", observed_at=observed_at, topic="topic-b"),
+            _build_envelope("b:c", observed_at=observed_at, topic="topic-b"),
+        )
+    )
+
+    edges = graph_store.list_edges()
+    assert len(result.edges) == 2
+    assert len(edges) == 2
+    assert {(edge.source_id, edge.target_id) for edge in edges} == {("a:b", "c"), ("a", "b:c")}
+    assert {edge.edge_id for edge in edges} == {
+        f"supports:{quote('a:b', safe='')}:{quote('c', safe='')}",
+        f"supports:{quote('a', safe='')}:{quote('b:c', safe='')}",
+    }
