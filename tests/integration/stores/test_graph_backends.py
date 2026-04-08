@@ -327,6 +327,99 @@ def test_arangodb_backend_neighbors_and_list_edges_do_not_full_scan(
     assert graph_store.list_edges() == (edge,)
 
 
+def test_arangodb_backend_find_edge_documents_falls_back_across_find_variants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph_backends._ARANGO_BACKENDS.clear()
+    _install_fake_arango(monkeypatch)
+
+    graph_store = ArangoDBGraphStore("arangodb://root:test@localhost:8529/cellin")
+    backend = graph_store._backend
+    document = {
+        "_key": "edge-find",
+        "_from": "cellin_memories/memory-1",
+        "_to": "cellin_memories/memory-2",
+        "payload": graph_backends.dump_edge(
+            _edge("edge-find", "memory-1", "memory-2", archived=False)
+        ),
+        "archived": False,
+    }
+    backend._edge_collection.insert(document, overwrite=True)
+
+    def positional_find(filters: dict[str, object] | None = None) -> list[dict[str, object]]:
+        if filters is None:
+            return [document]
+        raise TypeError("filters must be passed by keyword")
+
+    monkeypatch.setattr(backend._edge_collection, "find", positional_find)
+    assert backend._find_edge_documents() == [document]
+
+    def keyword_only_find(*args: object, **kwargs: object) -> list[dict[str, object]]:
+        assert args == ()
+        assert kwargs == {"filters": {"archived": False}}
+        return [document]
+
+    monkeypatch.setattr(backend._edge_collection, "find", keyword_only_find)
+    assert backend._find_edge_documents({"archived": False}) == [document]
+
+    def broken_find(*args: object, **kwargs: object) -> list[dict[str, object]]:
+        del args, kwargs
+        raise TypeError("fallback to scan")
+
+    monkeypatch.setattr(backend._edge_collection, "find", broken_find)
+    assert backend._find_edge_documents() == [document]
+    assert backend._find_edge_documents({"archived": False}) == [document]
+
+
+def test_arangodb_backend_filters_duplicate_invalid_and_archived_edge_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph_backends._ARANGO_BACKENDS.clear()
+    _install_fake_arango(monkeypatch)
+
+    graph_store = ArangoDBGraphStore("arangodb://root:test@localhost:8529/cellin")
+    graph_store.upsert_memory(_memory("memory-1", "Atlas"))
+    graph_store.upsert_memory(_memory("memory-2", "Neighbor"))
+    backend = graph_store._backend
+
+    duplicate_edge = _edge("edge-self", "memory-1", "memory-1", archived=False)
+    archived_edge = _edge("edge-archived", "memory-1", "memory-2", archived=True)
+
+    backend._edge_collection.insert(
+        {
+            "_key": duplicate_edge.edge_id,
+            "_from": "cellin_memories/memory-1",
+            "_to": "cellin_memories/memory-1",
+            "payload": graph_backends.dump_edge(duplicate_edge),
+            "archived": False,
+        },
+        overwrite=True,
+    )
+    backend._edge_collection.insert(
+        {
+            "_key": "edge-invalid",
+            "_from": "cellin_memories/memory-1",
+            "_to": "cellin_memories/memory-2",
+            "payload": {"unexpected": True},
+            "archived": False,
+        },
+        overwrite=True,
+    )
+    backend._edge_collection.insert(
+        {
+            "_key": archived_edge.edge_id,
+            "_from": "cellin_memories/memory-1",
+            "_to": "cellin_memories/memory-2",
+            "payload": graph_backends.dump_edge(archived_edge),
+            "archived": False,
+        },
+        overwrite=True,
+    )
+
+    assert graph_store.neighbors("memory-1") == (duplicate_edge,)
+    assert graph_store.list_edges() == (duplicate_edge,)
+
+
 @pytest.mark.parametrize(
     "graph_cls,connection_string,install_backend,clear_backends",
     [
