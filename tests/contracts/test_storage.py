@@ -338,6 +338,43 @@ def test_load_storage_backends_from_entry_points_supports_provider_sequences(
     assert loaded == ("memory:sequence_memory_one", "graph:sequence_graph_two")
 
 
+def test_load_storage_backends_reports_only_new_backends_for_duplicates(
+    storage_registry_snapshot: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duplicate_provider = StorageBackendProvider(
+        role="memory",
+        backend="custom-memory",
+        builder=lambda config, *, workspace_root: (config, workspace_root),
+    )
+    monkeypatch.setattr(
+        runtime_storage.metadata,
+        "entry_points",
+        lambda: _FakeStorageEntryPoints(
+            [
+                _FakeStorageEntryPoint(
+                    name="duplicate-provider-one",
+                    group=runtime_storage.DEFAULT_STORAGE_ENTRYPOINT_GROUP,
+                    loaded=lambda: duplicate_provider,
+                ),
+                _FakeStorageEntryPoint(
+                    name="duplicate-provider-two",
+                    group=runtime_storage.DEFAULT_STORAGE_ENTRYPOINT_GROUP,
+                    loaded=lambda: StorageBackendProvider(
+                        role="memory",
+                        backend="custom-memory",
+                        builder=duplicate_provider.builder,
+                    ),
+                ),
+            ]
+        ),
+    )
+
+    loaded = load_storage_backends_from_entry_points()
+
+    assert loaded == ("memory:custom-memory",)
+
+
 def test_load_storage_backends_from_entry_points_rejects_invalid_targets(
     storage_registry_snapshot: None,
     monkeypatch: pytest.MonkeyPatch,
@@ -698,15 +735,19 @@ def test_build_storage_bundle_resolves_mysql_memory_graph_backends(
 def test_build_storage_bundle_rejects_pgvector_without_connection_string(
     tmp_path: Path,
 ) -> None:
-    config = StorageConfig(
-        memory=StorageBackendConfig("in_memory"),
-        graph=StorageBackendConfig("in_memory"),
-        vector=StorageBackendConfig("pgvector"),
-        representation=StorageBackendConfig("in_memory_vector_index"),
-    )
+    for connection_string in (None, "", "   "):
+        config = StorageConfig(
+            memory=StorageBackendConfig("in_memory"),
+            graph=StorageBackendConfig("in_memory"),
+            vector=StorageBackendConfig("pgvector", connection_string),
+            representation=StorageBackendConfig("in_memory_vector_index"),
+        )
 
-    with pytest.raises(StorageBackendError, match="pgvector backend requires a connection string"):
-        build_storage_bundle(config, workspace_root=tmp_path)
+        with pytest.raises(
+            StorageBackendError,
+            match="pgvector backend requires a connection string",
+        ):
+            build_storage_bundle(config, workspace_root=tmp_path)
 
 
 def test_build_storage_bundle_rejects_postgresql_without_connection_string(tmp_path: Path) -> None:
