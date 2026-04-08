@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import builtins
 import math
+import sqlite3
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -26,6 +28,7 @@ from cellin.stores import (
     SQLiteMemoryStore,
     SQLiteVecStore,
 )
+from cellin.stores import sqlite as sqlite_module
 from cellin.stores.vector_utils import cosine_similarity, vectorize
 
 
@@ -56,6 +59,24 @@ def _edge(edge_id: str, source_id: str, target_id: str, *, archived: bool) -> Me
     )
 
 
+def _edge_with_archived_marker(
+    edge_id: str,
+    source_id: str,
+    target_id: str,
+    *,
+    archived: object,
+) -> MemoryEdge:
+    return MemoryEdge(
+        edge_id=edge_id,
+        source_id=source_id,
+        target_id=target_id,
+        kind=EdgeKind.SUPPORTS,
+        provenance=Provenance(source_id=edge_id, source_type="fixture"),
+        created_at=datetime(2026, 4, 5, tzinfo=UTC),
+        metadata={"archived": archived},
+    )
+
+
 def test_sqlite_store_handles_empty_batches_missing_rows_and_batched_memory_upserts(
     tmp_path,
 ) -> None:
@@ -73,6 +94,49 @@ def test_sqlite_store_handles_empty_batches_missing_rows_and_batched_memory_upse
     graph_store.upsert_memories((memory,))
 
     assert graph_store.get_memory(memory.memory_id) == memory
+
+
+def test_sqlite_memory_store_preserves_in_memory_path_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connect_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    original_connect = sqlite3.connect
+    resolved_sentinel = str(Path(":memory:").resolve())
+
+    def tracking_connect(*args: object, **kwargs: object) -> sqlite3.Connection:
+        connect_calls.append((args, kwargs))
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite_module.sqlite3, "connect", tracking_connect)
+    store = SQLiteMemoryStore(":memory:")
+    memory = _memory("atlas-memory", "Atlas memory")
+
+    store.put(memory)
+
+    assert store.get("atlas-memory") == memory
+    assert connect_calls
+    assert all(str(args[0]) != resolved_sentinel for args, _ in connect_calls)
+
+
+def test_sqlite_vec_store_preserves_in_memory_path_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connect_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    original_connect = sqlite3.connect
+    resolved_sentinel = str(Path(":memory:").resolve())
+
+    def tracking_connect(*args: object, **kwargs: object) -> sqlite3.Connection:
+        connect_calls.append((args, kwargs))
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite_module.sqlite3, "connect", tracking_connect)
+    store = SQLiteVecStore(":memory:")
+
+    store.upsert("atlas-memory-vector", "Atlas memory vector")
+
+    assert store.search("atlas memory", limit=1)[0].memory_id == "atlas-memory-vector"
+    assert connect_calls
+    assert all(str(args[0]) != resolved_sentinel for args, _ in connect_calls)
 
 
 def test_sqlite_store_filters_archived_edges_and_vector_index_handles_empty_text(
@@ -93,6 +157,19 @@ def test_sqlite_store_filters_archived_edges_and_vector_index_handles_empty_text
     vector_index.upsert("blank", "")
 
     assert math.isclose(vector_index.search("", limit=1)[0].score, 0.0, abs_tol=1e-12)
+
+
+def test_sqlite_graph_store_normalizes_integer_archived_marker(tmp_path) -> None:
+    database_path = tmp_path / "graph.sqlite"
+    graph_store = SQLiteGraphStore(str(database_path))
+    active = _edge_with_archived_marker("active-edge", "atlas-1", "atlas-2", archived=False)
+    archived = _edge_with_archived_marker("archived-edge", "atlas-1", "atlas-3", archived=1)
+
+    graph_store.upsert_edge(active)
+    graph_store.upsert_edge(archived)
+
+    assert graph_store.neighbors("atlas-1") == (active,)
+    assert graph_store.list_edges() == (active,)
 
 
 def test_sqlite_vec_store_persists_vectors_and_supports_similarity_ranking(tmp_path) -> None:
@@ -119,6 +196,26 @@ def test_sqlite_vec_store_persists_vectors_and_supports_similarity_ranking(tmp_p
 
     assert tuple(result.memory_id for result in results) == expected
     assert results[0].score >= results[1].score
+
+
+def test_sqlite_vec_store_does_not_force_full_vector_list_for_ranked_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path = tmp_path / "vector.sqlite"
+    vector_store = SQLiteVecStore(str(database_path))
+    vector_store.upsert("m1", "atlas architecture graph")
+    vector_store.upsert("m2", "memory graph retrieval")
+    vector_store.upsert("m3", "gardening and tomatoes")
+
+    def fail_if_called() -> tuple[tuple[str, tuple[float, ...]], ...]:
+        raise AssertionError("search should avoid list_vectors for prefiltered ranking")
+
+    monkeypatch.setattr(vector_store._backend, "list_vectors", fail_if_called)
+
+    results = vector_store.search("atlas graph", limit=2)
+    assert len(results) == 2
+    assert tuple(item.memory_id for item in results) == ("m1", "m2")
 
 
 def test_sqlite_vec_store_respects_search_limit_zero(tmp_path) -> None:

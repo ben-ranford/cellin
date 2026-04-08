@@ -51,6 +51,14 @@ def _require_number(value: object, *, field_name: str) -> float:
     return float(value)
 
 
+def _require_optional_number(
+    value: object, *, field_name: str, default: float | None = None
+) -> float | None:
+    if value is None:
+        return default
+    return _require_number(value, field_name=field_name)
+
+
 def _require_list(value: object, *, field_name: str) -> Sequence[object]:
     if not isinstance(value, list):
         raise TypeError(f"{field_name} payload must be a list")
@@ -96,6 +104,9 @@ def load_memory_payload(raw: Mapping[str, object]) -> MemoryAtom:
     provenance = _require_mapping(raw.get("provenance"), field_name="provenance")
     decay = _require_mapping(raw.get("decay"), field_name="decay")
     retrieval = _require_mapping(raw.get("retrieval"), field_name="retrieval")
+    provenance_metadata = _require_mapping(
+        provenance.get("metadata"), field_name="provenance.metadata"
+    )
     embeddings = _require_list(raw.get("embeddings", []), field_name="embeddings")
     created_at = _parse_dt(raw.get("created_at"))
     if created_at is None:
@@ -113,7 +124,7 @@ def load_memory_payload(raw: Mapping[str, object]) -> MemoryAtom:
             ),
             uri=cast(str | None, provenance.get("uri")),
             ingest_run_id=cast(str | None, provenance.get("ingest_run_id")),
-            metadata=cast(dict[str, JSONValue], provenance.get("metadata", {})),
+            metadata=cast(dict[str, JSONValue], provenance_metadata),
         ),
         modality=Modality(_require_str(raw.get("modality"), field_name="modality")),
         created_at=created_at,
@@ -123,7 +134,7 @@ def load_memory_payload(raw: Mapping[str, object]) -> MemoryAtom:
         trust_score=_require_number(raw.get("trust_score"), field_name="trust_score"),
         decay=DecayState(
             archived=bool(decay.get("archived", False)),
-            half_life_days=_require_number(
+            half_life_days=_require_optional_number(
                 decay.get("half_life_days"),
                 field_name="decay.half_life_days",
             ),
@@ -190,6 +201,9 @@ def edge_payload(edge: MemoryEdge) -> dict[str, object]:
 
 def load_edge_payload(raw: Mapping[str, object]) -> MemoryEdge:
     provenance = _require_mapping(raw.get("provenance"), field_name="provenance")
+    provenance_metadata = _require_mapping(
+        provenance.get("metadata"), field_name="provenance.metadata"
+    )
     created_at = _parse_dt(raw.get("created_at"))
     if created_at is None:
         raise TypeError("created_at payload must be present")
@@ -207,7 +221,7 @@ def load_edge_payload(raw: Mapping[str, object]) -> MemoryEdge:
             ),
             uri=cast(str | None, provenance.get("uri")),
             ingest_run_id=cast(str | None, provenance.get("ingest_run_id")),
-            metadata=cast(dict[str, JSONValue], provenance.get("metadata", {})),
+            metadata=cast(dict[str, JSONValue], provenance_metadata),
         ),
         created_at=created_at,
         weight=_require_number(raw.get("weight"), field_name="weight"),
@@ -228,4 +242,8 @@ def load_edge(payload: str) -> MemoryEdge:
 
 def edge_is_archived(edge: MemoryEdge) -> bool:
     archived = edge.metadata.get("archived")
-    return bool(archived) if isinstance(archived, bool) else False
+    if isinstance(archived, bool):
+        return archived
+    if isinstance(archived, int):
+        return archived != 0
+    return False
