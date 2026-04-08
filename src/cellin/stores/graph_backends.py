@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import chain
-from urllib.parse import quote, urlparse
 from typing import Protocol, cast
+from urllib.parse import quote, urlparse
 
 from cellin.core import GraphStore, MemoryAtom, MemoryEdge
 from cellin.stores._graph_serialization import (
@@ -239,31 +239,30 @@ class _ArangoGraphBackend:
         if not self._database.has_collection("cellin_edges"):
             self._database.create_collection("cellin_edges", edge=True)
 
-    def _find_edge_documents(self, filters: dict[str, object] | None = None) -> list[dict[str, object]]:
+    def _find_edge_documents(
+        self, filters: dict[str, object] | None = None
+    ) -> list[dict[str, object]]:
         finder = getattr(self._edge_collection, "find", None)
         if callable(finder):
-            found_with_find = True
-            try:
-                if filters is None:
-                    documents = finder()
-                else:
-                    documents = finder(filters)
-            except TypeError:
-                found_with_find = False
+
+            def _find_documents() -> list[dict[str, object]] | None:
                 try:
-                    documents = finder(filters=filters)
-                    found_with_find = True
+                    if filters is None:
+                        return list(finder())
+                    return list(finder(filters))
+                except TypeError:
+                    if filters is None:
+                        return None
+                    try:
+                        return list(finder(filters=filters))
+                    except Exception:
+                        return None
                 except Exception:
-                    found_with_find = False
-                    documents = ()
-            except Exception:
-                found_with_find = False
-                documents = ()
-            else:
-                found_with_find = True
-                return [dict(document) for document in documents]
-            if found_with_find:
-                return [dict(document) for document in documents]
+                    return None
+
+            documents = _find_documents()
+            if documents is not None:
+                return documents
 
         edges = self._edge_collection.all()
         if not filters:
