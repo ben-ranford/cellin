@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from cellin.core import VectorMatch
@@ -10,6 +11,19 @@ from cellin.stores.vector_utils import vectorize
 
 class _MissingPgVectorDependencyError(RuntimeError):
     """Raised when pgvector is unavailable from runtime dependencies."""
+
+
+_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _require_valid_table_name(table_name: str) -> str:
+    if _TABLE_NAME_RE.fullmatch(table_name) is None:
+        raise ValueError("pgvector table name must be a safe SQL identifier")
+    return _quote_identifier(table_name)
 
 
 class PGVectorStore:
@@ -29,7 +43,7 @@ class PGVectorStore:
 
         self._psycopg = psycopg
         self._connection_string = connection_string
-        self._table_name = table_name
+        self._table_name = _require_valid_table_name(table_name)
         self._initialized = False
         self._ensure_schema()
 

@@ -1097,6 +1097,28 @@ def test_redis_vector_store_handles_invalid_payloads_and_missing_vectors(
     assert store.search("query", limit=0) == ()
 
 
+def test_redis_vector_store_escapes_pattern_characters_in_collection_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_redis_vector(monkeypatch)
+
+    store = RedisVectorStore("redis://localhost:6379/0?collection=cell[in]?*v")
+    backend = store._backend
+    observed: dict[str, str | None] = {"match": None}
+
+    def capture_scan_match(match: str) -> list[str]:
+        observed["match"] = match
+        return []
+
+    monkeypatch.setattr(backend._client, "scan_iter", capture_scan_match)
+    assert store.search("query", limit=10) == ()
+    assert observed["match"] == "cellin:0:vector:cell\\[in\\]\\?\\*v:*"
+
+
+def test_redis_escape_scan_match() -> None:
+    assert redis_vector_store._escape_scan_match("cell[in]?*v") == r"cell\[in\]\?\*v"
+
+
 def test_redis_vector_store_does_not_remarshal_collection_initialization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

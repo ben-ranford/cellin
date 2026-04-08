@@ -308,8 +308,8 @@ def test_pgvector_store_creates_schema_upserts_and_searches(
 
     assert fake_psycopg.connection_strings == ["postgresql://cellin/test"] * 3
     queries = [query for query, _ in fake_psycopg.calls]
-    assert any("CREATE TABLE IF NOT EXISTS cellin_vectors_test" in query for query in queries)
-    assert any("INSERT INTO cellin_vectors_test" in query for query in queries)
+    assert any('CREATE TABLE IF NOT EXISTS "cellin_vectors_test"' in query for query in queries)
+    assert any('INSERT INTO "cellin_vectors_test"' in query for query in queries)
     assert any("SELECT memory_id, vector <=> %s AS distance" in query for query in queries)
     assert tuple(result.memory_id for result in results) == ("m1", "m2")
     assert results[0].score == pytest.approx(0.9)
@@ -324,6 +324,29 @@ def test_pgvector_store_limit_zero_short_circuits(monkeypatch: pytest.MonkeyPatc
 
     assert vector_store.search("atlas graph", limit=0) == ()
     assert len(fake_psycopg.calls) == 1
+
+
+def test_pgvector_store_rejects_unsafe_table_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_psycopg = _FakePsycopg([])
+    monkeypatch.setitem(sys.modules, "psycopg", fake_psycopg)
+
+    with pytest.raises(ValueError, match="safe SQL identifier"):
+        PGVectorStore("postgresql://cellin/test", table_name='cellin_vectors";DROP TABLE')
+
+    assert fake_psycopg.calls == []
+
+
+def test_pgvector_store_quotes_identifier_in_queries(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_psycopg = _FakePsycopg([("m1", 0.1)])
+    monkeypatch.setitem(sys.modules, "psycopg", fake_psycopg)
+
+    vector_store = PGVectorStore("postgresql://cellin/test", table_name="cellin_vectors_safe")
+    vector_store.search("query", limit=10)
+
+    queries = [query for query, _ in fake_psycopg.calls]
+    assert any('"cellin_vectors_safe"' in query for query in queries)
+    assert any("SELECT memory_id, vector <=> %s AS distance" in query for query in queries)
+    assert any("CREATE TABLE IF NOT EXISTS" in query for query in queries)
 
 
 def test_in_memory_vector_index_respects_search_limit_zero() -> None:
