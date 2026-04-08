@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import chain
+from urllib.parse import quote, urlparse
 from typing import Protocol, cast
-from urllib.parse import urlparse
 
 from cellin.core import GraphStore, MemoryAtom, MemoryEdge
 from cellin.stores._graph_serialization import (
@@ -76,6 +77,8 @@ class _ArangoCollection(Protocol):
 
     def all(self) -> list[dict[str, object]]: ...
 
+    def find(self, filters: dict[str, object] | None = None) -> list[dict[str, object]]: ...
+
 
 class _ArangoDatabase(Protocol):
     def has_collection(self, name: str) -> bool: ...
@@ -125,6 +128,10 @@ def _load_optional_payload(payload: object) -> MemoryAtom | None:
     if not isinstance(payload, str):
         raise TypeError("graph backend payloads must be strings")
     return load_memory(payload)
+
+
+def _arangodb_key(value: str) -> str:
+    return quote(value, safe="")
 
 
 class _CypherGraphBackend:
@@ -232,17 +239,57 @@ class _ArangoGraphBackend:
         if not self._database.has_collection("cellin_edges"):
             self._database.create_collection("cellin_edges", edge=True)
 
+    def _find_edge_documents(self, filters: dict[str, object] | None = None) -> list[dict[str, object]]:
+        finder = getattr(self._edge_collection, "find", None)
+        if callable(finder):
+            found_with_find = True
+            try:
+                if filters is None:
+                    documents = finder()
+                else:
+                    documents = finder(filters)
+            except TypeError:
+                found_with_find = False
+                try:
+                    documents = finder(filters=filters)
+                    found_with_find = True
+                except Exception:
+                    found_with_find = False
+                    documents = ()
+            except Exception:
+                found_with_find = False
+                documents = ()
+            else:
+                found_with_find = True
+                return [dict(document) for document in documents]
+            if found_with_find:
+                return [dict(document) for document in documents]
+
+        edges = self._edge_collection.all()
+        if not filters:
+            return [dict(document) for document in edges]
+
+        def matches(document: dict[str, object], filters: dict[str, object]) -> bool:
+            for name, value in filters.items():
+                if document.get(name) != value:
+                    return False
+            return True
+
+        return [dict(document) for document in edges if matches(document, filters)]
+
     def _ensure_memory_placeholder(self, memory_id: str) -> None:
-        if self._memory_collection.get(memory_id) is None:
+        key = _arangodb_key(memory_id)
+        if self._memory_collection.get(key) is None:
             self._memory_collection.insert(
-                {"_key": memory_id, "memory_id": memory_id, "payload": None},
+                {"_key": key, "memory_id": memory_id, "payload": None},
                 overwrite=True,
             )
 
     def upsert_memory(self, memory: MemoryAtom) -> None:
+        key = _arangodb_key(memory.memory_id)
         self._memory_collection.insert(
             {
-                "_key": memory.memory_id,
+                "_key": key,
                 "memory_id": memory.memory_id,
                 "payload": dump_memory(memory),
                 "archived": memory.decay.archived,
@@ -251,7 +298,8 @@ class _ArangoGraphBackend:
         )
 
     def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        document = self._memory_collection.get(memory_id)
+        key = _arangodb_key(memory_id)
+        document = self._memory_collection.get(key)
         if document is None:
             return None
         return _load_optional_payload(document.get("payload"))
@@ -259,11 +307,13 @@ class _ArangoGraphBackend:
     def upsert_edge(self, edge: MemoryEdge) -> None:
         self._ensure_memory_placeholder(edge.source_id)
         self._ensure_memory_placeholder(edge.target_id)
+        source_key = _arangodb_key(edge.source_id)
+        target_key = _arangodb_key(edge.target_id)
         self._edge_collection.insert(
             {
                 "_key": edge.edge_id,
-                "_from": f"cellin_memories/{edge.source_id}",
-                "_to": f"cellin_memories/{edge.target_id}",
+                "_from": f"cellin_memories/{source_key}",
+                "_to": f"cellin_memories/{target_key}",
                 "payload": dump_edge(edge),
                 "archived": edge_is_archived(edge),
             },
@@ -271,21 +321,30 @@ class _ArangoGraphBackend:
         )
 
     def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
+        memory_key = _arangodb_key(memory_id)
+        source_handle = f"cellin_memories/{memory_key}"
+        target_handle = f"cellin_memories/{memory_key}"
+        source_edges = self._find_edge_documents({"_from": source_handle, "archived": False})
+        target_edges = self._find_edge_documents({"_to": target_handle, "archived": False})
+        seen: set[str] = set()
         edges = []
-        for document in self._edge_collection.all():
+        for document in chain(source_edges, target_edges):
+            edge_key = str(document.get("_key", ""))
+            if edge_key in seen:
+                continue
+            seen.add(edge_key)
             payload = document.get("payload")
             if not isinstance(payload, str):
                 continue
             edge = load_edge(payload)
             if edge_is_archived(edge):
                 continue
-            if edge.source_id == memory_id or edge.target_id == memory_id:
-                edges.append(edge)
+            edges.append(edge)
         return tuple(sorted(edges, key=lambda edge: edge.edge_id))
 
     def list_edges(self) -> tuple[MemoryEdge, ...]:
         edges = []
-        for document in self._edge_collection.all():
+        for document in self._find_edge_documents({"archived": False}):
             payload = document.get("payload")
             if not isinstance(payload, str):
                 continue

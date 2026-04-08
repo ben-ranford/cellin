@@ -172,12 +172,12 @@ class _PineconeBackend:
         return tuple(ordered[:limit])
 
 
-_BACKENDS: dict[tuple[str, str, str], _PineconeBackend] = {}
+_BACKENDS: dict[tuple[str, str, str, str], _PineconeBackend] = {}
 
 
 def _backend_for(connection_string: str) -> _PineconeBackend:
-    _, api_key, index_name, namespace = _normalize_connection_and_index(connection_string)
-    key = (api_key or "", index_name, namespace)
+    endpoint, api_key, index_name, namespace = _normalize_connection_and_index(connection_string)
+    key = (endpoint, api_key or "", index_name, namespace)
     backend = _BACKENDS.get(key)
     if backend is None:
         backend = _PineconeBackend(connection_string)

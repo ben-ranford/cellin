@@ -153,6 +153,15 @@ class _FakeArangoCollection:
     def all(self) -> list[dict[str, object]]:
         return [dict(document) for _, document in sorted(self._documents.items())]
 
+    def find(self, filters: dict[str, object] | None = None) -> list[dict[str, object]]:
+        if not filters:
+            return [dict(document) for _, document in sorted(self._documents.items())]
+        return [
+            dict(document)
+            for _, document in sorted(self._documents.items())
+            if all(str(document.get(name, "")) == str(value) for name, value in filters.items())
+        ]
+
 
 class _FakeArangoDatabase:
     def __init__(self) -> None:
@@ -262,6 +271,60 @@ def test_graph_native_backends_filter_archived_edges_and_share_state(
     assert graph_store.get_memory("missing-memory") is None
     assert graph_store.neighbors("memory-1") == (active,)
     assert graph_store.list_edges() == (active,)
+
+
+def test_arangodb_backend_encodes_memory_ids_in_document_handles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph_backends._ARANGO_BACKENDS.clear()
+    _install_fake_arango(monkeypatch)
+
+    source_id = "memory/with/slash"
+    target_id = "neighbor:with:colon"
+    graph_store = ArangoDBGraphStore("arangodb://root:test@localhost:8529/cellin")
+    edge = _edge("edge-1", source_id, target_id, archived=False)
+
+    graph_store.upsert_memory(_memory(source_id, "Source"))
+    graph_store.upsert_memory(_memory(target_id, "Target"))
+    graph_store.upsert_edge(edge)
+
+    backend = graph_store._backend
+    assert backend._memory_collection.get("memory%2Fwith%2Fslash") is not None
+    assert backend._memory_collection.get(source_id) is None
+    assert (
+        backend._edge_collection._documents["edge-1"]["_from"]
+        == "cellin_memories/memory%2Fwith%2Fslash"
+    )
+    assert (
+        backend._edge_collection._documents["edge-1"]["_to"]
+        == "cellin_memories/neighbor%3Awith%3Acolon"
+    )
+    assert graph_store.get_memory(source_id) == _memory(source_id, "Source")
+    assert graph_store.neighbors(source_id) == (edge,)
+    assert graph_store.list_edges() == (edge,)
+
+
+def test_arangodb_backend_neighbors_and_list_edges_do_not_full_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph_backends._ARANGO_BACKENDS.clear()
+    _install_fake_arango(monkeypatch)
+
+    edge = _edge("edge-2", "memory-1", "memory-2", archived=False)
+    graph_store = ArangoDBGraphStore("arangodb://root:test@localhost:8529/cellin")
+    graph_store.upsert_memory(_memory("memory-1", "Atlas"))
+    graph_store.upsert_memory(_memory("memory-2", "Another"))
+    graph_store.upsert_edge(edge)
+
+    backend = graph_store._backend
+
+    def scan_not_expected() -> list[dict[str, object]]:
+        raise AssertionError("Edge scan should be filtered, not full-scan")
+
+    monkeypatch.setattr(backend._edge_collection, "all", scan_not_expected)
+
+    assert graph_store.neighbors("memory-1") == (edge,)
+    assert graph_store.list_edges() == (edge,)
 
 
 @pytest.mark.parametrize(
