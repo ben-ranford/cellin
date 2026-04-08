@@ -13,6 +13,13 @@ class _MissingRedisDependencyError(RuntimeError):
     """Raised when Redis dependencies are unavailable."""
 
 
+def _escape_scan_match(value: str) -> str:
+    escaped = value
+    for pattern_char in ("\\", "*", "?", "[", "]"):
+        escaped = escaped.replace(pattern_char, "\\" + pattern_char)
+    return escaped
+
+
 def _parse_namespace(connection_string: str) -> tuple[str, str]:
     parsed = urlparse(connection_string)
     query = parse_qs(parsed.query)
@@ -68,7 +75,7 @@ class _RedisVectorBackend:
 
         query_vector = vectorize(query)
         matches: list[VectorMatch] = []
-        pattern = f"{self._namespace}:vector:{self._collection}:*"
+        pattern = f"{self._namespace}:vector:{_escape_scan_match(self._collection)}:*"
         for key in self._client.scan_iter(match=pattern):
             payload = self._client.get(key)
             if payload is None:
