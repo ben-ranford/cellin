@@ -112,8 +112,8 @@ def test_retrieval_case_with_empty_bundle_does_not_index_crash(
         case_id="retrieval-project",
     )
     assert case.status == "failed"
-    assert case.metrics["top_score"] == 0.0
-    assert case.metrics["hit_rate"] == 0.0
+    assert case.metrics["top_score"] == pytest.approx(0.0)
+    assert case.metrics["hit_rate"] == pytest.approx(0.0)
 
 
 def test_dream_case_with_empty_bundle_reports_failure_without_crash(
@@ -127,7 +127,7 @@ def test_dream_case_with_empty_bundle_reports_failure_without_crash(
     monkeypatch.setattr(eval_runner, "_retriever", lambda *args, **kwargs: _EmptyRetriever())
     case = eval_runner._run_dream_case()
     assert case.status == "failed"
-    assert case.metrics["top_score"] == 0.0
+    assert case.metrics["top_score"] == pytest.approx(0.0)
     assert case.notes["diff"]
 
 
@@ -168,5 +168,5 @@ def test_ingest_case_with_empty_vector_output_is_hardened(
 
     case = eval_runner._run_ingest_case()
     assert case.status == "ok"
-    assert case.metrics["vector_top_score"] == 0.0
+    assert case.metrics["vector_top_score"] == pytest.approx(0.0)
     assert case.notes["top_memory_id"] is None
