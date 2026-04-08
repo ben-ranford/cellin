@@ -18,7 +18,8 @@ def _workspace_config_path(workspace: Path) -> Path:
 def _write_storage_config(config_path: Path, storage: dict[str, object]) -> Path:
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["storage"] = storage
-    config_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    with config_path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, sort_keys=True)
     return config_path
 
 
