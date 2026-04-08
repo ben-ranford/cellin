@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from cellin.core import (
     Artifact,
     EdgeKind,
@@ -169,6 +171,70 @@ def test_adapters_cover_supported_modalities_and_normalization_paths() -> None:
     )
     assert image_artifact.content == "provided image text"
     assert image_artifact.metadata["image_path"] == "board.png"
+
+
+def test_adapters_validate_payload_types_explicitly() -> None:
+    observed_at = datetime(2026, 4, 5, tzinfo=UTC)
+
+    assert isinstance(
+        TextAdapter().normalize(_envelope("text", Modality.TEXT, "Atlas", observed_at=observed_at)),
+        Artifact,
+    )
+    assert isinstance(
+        MarkdownAdapter().normalize(
+            _envelope("markdown", Modality.MARKDOWN, "# Atlas", observed_at=observed_at)
+        ),
+        Artifact,
+    )
+    assert isinstance(
+        JSONAdapter().normalize(
+            _envelope("json", Modality.JSON, {"status": "green"}, observed_at=observed_at)
+        ),
+        Artifact,
+    )
+    assert isinstance(
+        ChatAdapter().normalize(
+            _envelope(
+                "chat",
+                Modality.CHAT,
+                {"messages": [{"role": "user", "content": "hello"}]},
+                observed_at=observed_at,
+            )
+        ),
+        Artifact,
+    )
+    assert isinstance(
+        ImageAdapter().normalize(
+            _envelope("image", Modality.IMAGE, {"path": "board.png"}, observed_at=observed_at)
+        ),
+        Artifact,
+    )
+
+    with pytest.raises(TypeError):
+        TextAdapter().normalize(_envelope("text", Modality.TEXT, 42, observed_at=observed_at))
+    with pytest.raises(TypeError):
+        MarkdownAdapter().normalize(
+            _envelope("markdown", Modality.MARKDOWN, 0.5, observed_at=observed_at)
+        )
+    with pytest.raises(TypeError):
+        JSONAdapter().normalize(
+            _envelope("json", Modality.JSON, "not-json", observed_at=observed_at)
+        )
+    with pytest.raises(TypeError):
+        ChatAdapter().normalize(_envelope("chat", Modality.CHAT, ["chat"], observed_at=observed_at))
+    with pytest.raises(TypeError):
+        ChatAdapter().normalize(
+            _envelope(
+                "chat",
+                Modality.CHAT,
+                {"messages": ["bad-message"]},
+                observed_at=observed_at,
+            )
+        )
+    with pytest.raises(TypeError):
+        ImageAdapter().normalize(
+            _envelope("image", Modality.IMAGE, ["bad"], observed_at=observed_at)
+        )
 
 
 def test_ingestor_falls_back_to_put_and_upsert_loops_for_simple_stores() -> None:

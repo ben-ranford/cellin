@@ -110,8 +110,8 @@ class RetrievalCandidateGenerator:
         ]
         vector_seeded = [_annotate_distance(memory, 0) for memory in ranked_by_vector]
         if lexical_seeded:
-            merged = _ordered_unique(list(lexical_seeded) + vector_seeded)
-            return merged[: max(limit, self.vector_limit, self.lexical_limit)]
+            seed_candidates = list(lexical_seeded) + vector_seeded
+            return seed_candidates[: max(limit, self.vector_limit, self.lexical_limit)]
 
         if vector_seeded:
             return vector_seeded[: max(limit, self.vector_limit)]

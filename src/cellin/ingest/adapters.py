@@ -33,6 +33,18 @@ def _artifact(
     )
 
 
+def _ensure_payload_type(
+    payload: object,
+    expected_type: type | tuple[type, ...],
+    adapter_name: str,
+) -> None:
+    if not isinstance(payload, expected_type):
+        raise TypeError(
+            f"{adapter_name} adapter expected payload of type "
+            f"{expected_type}, got {type(payload)!r}"
+        )
+
+
 @dataclass(slots=True)
 class TextAdapter:
     """Normalizes plain text envelopes."""
@@ -41,7 +53,7 @@ class TextAdapter:
         return modality is Modality.TEXT
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, str)
+        _ensure_payload_type(envelope.payload, str, "TextAdapter")
         return _artifact(envelope, content=envelope.payload)
 
 
@@ -53,7 +65,7 @@ class MarkdownAdapter:
         return modality is Modality.MARKDOWN
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, str)
+        _ensure_payload_type(envelope.payload, str, "MarkdownAdapter")
         return _artifact(envelope, content=envelope.payload)
 
 
@@ -65,7 +77,7 @@ class JSONAdapter:
         return modality is Modality.JSON
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, dict | list)
+        _ensure_payload_type(envelope.payload, (dict, list), "JSONAdapter")
         return _artifact(
             envelope,
             content=json.dumps(envelope.payload, sort_keys=True),
@@ -80,12 +92,14 @@ class ChatAdapter:
         return modality is Modality.CHAT
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, dict)
+        _ensure_payload_type(envelope.payload, dict, "ChatAdapter")
         messages = envelope.payload.get("messages", [])
-        assert isinstance(messages, list)
+        if not isinstance(messages, list):
+            raise TypeError("ChatAdapter adapter expected payload['messages'] to be a list")
         rendered_messages: list[str] = []
         for message in messages:
-            assert isinstance(message, dict)
+            if not isinstance(message, dict):
+                raise TypeError("ChatAdapter adapter expected each payload message to be a dict")
             role = str(message.get("role", "unknown"))
             content = str(message.get("content", ""))
             rendered_messages.append(f"{role}: {content}")
@@ -103,7 +117,7 @@ class ImageAdapter:
         return modality is Modality.IMAGE
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, dict)
+        _ensure_payload_type(envelope.payload, dict, "ImageAdapter")
 
         if self.text_provider is not None:
             content = self.text_provider(envelope)

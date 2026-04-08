@@ -13,7 +13,7 @@ from cellin.retrieval.candidate_generation import RetrievalCandidateGenerator
 def _estimate_token_cost(item: ScoredMemory) -> int:
     metadata_cost = item.memory.metadata.get("token_count")
     if isinstance(metadata_cost, int):
-        return metadata_cost
+        return max(1, metadata_cost)
     return max(1, len(item.memory.text.split()))
 
 
@@ -26,6 +26,15 @@ class WeightedRetriever:
     profile: WeightProfile
 
     def retrieve(self, query: str, top_k: int = 5) -> MemoryBundle:
+        if top_k <= 0:
+            return MemoryBundle(
+                query=query,
+                memories=(),
+                total_score=0.0,
+                summary=None,
+                token_budget=self.profile.token_budget,
+            )
+
         candidates = self.candidate_generator.collect(
             query,
             limit=max(top_k, self.profile.candidate_limit),
