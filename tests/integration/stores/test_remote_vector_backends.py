@@ -494,7 +494,8 @@ def test_qdrant_search_uses_local_matches_when_remote_query_errors(
 
     monkeypatch.setattr(backend._client, "query_points", query_points)
 
-    assert tuple(item.memory_id for item in store.search("atlas", limit=10)) == ("memory-1",)
+    with pytest.warns(RuntimeWarning, match="qdrant remote query failed"):
+        assert tuple(item.memory_id for item in store.search("atlas", limit=10)) == ("memory-1",)
 
 
 def test_qdrant_vector_payload_helpers_handle_fallback_types() -> None:
@@ -802,6 +803,19 @@ def test_pinecone_uses_init_path_when_pinecone_connector_is_unavailable(
     assert state["init_called"] is True
 
 
+def test_pinecone_cache_key_includes_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    pinecone_store._BACKENDS.clear()
+    _install_pinecone(monkeypatch)
+
+    store = PineconeVectorStore("https://localhost:8100/cellin_vectors")
+    other_host_store = PineconeVectorStore("https://other-host:8100/cellin_vectors")
+
+    assert store._backend is not other_host_store._backend
+
+    peer = PineconeVectorStore("https://other-host:8100/cellin_vectors")
+    assert other_host_store._backend is peer._backend
+
+
 def test_pinecone_vector_store_filters_tombstones_and_reuses_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1003,7 +1017,8 @@ def test_milvus_search_uses_empty_remote_results_on_general_failure(
         )()
 
     store._backend._collection = collection  # type: ignore[method-assign]
-    assert tuple(item.memory_id for item in store.search("query", limit=10)) == ("memory-1",)
+    with pytest.warns(RuntimeWarning, match="milvus remote search failed"):
+        assert tuple(item.memory_id for item in store.search("query", limit=10)) == ("memory-1",)
 
 
 def _install_redis_vector(monkeypatch: pytest.MonkeyPatch) -> None:

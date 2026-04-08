@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -12,6 +13,10 @@ from cellin.stores.vector_utils import cosine_similarity, vectorize
 
 class _MissingMilvusDependencyError(RuntimeError):
     """Raised when Milvus dependencies are unavailable."""
+
+
+class _MilvusRemoteSearchError(RuntimeError):
+    """Raised when Milvus remote search fails unexpectedly."""
 
 
 def _normalize_connection_and_collection(connection_string: str) -> tuple[str, str]:
@@ -151,8 +156,8 @@ class _MilvusBackend:
                     )
         except TypeError:
             pass
-        except Exception:
-            return []
+        except Exception as exc:
+            raise _MilvusRemoteSearchError("milvus remote search failed") from exc
         return results
 
     def _search_local(self, query_vector: tuple[float, ...]) -> list[VectorMatch]:
@@ -170,7 +175,11 @@ class _MilvusBackend:
             return ()
 
         query_vector = vectorize(query)
-        matches = self._search_remote(query_vector, limit)
+        try:
+            matches = self._search_remote(query_vector, limit)
+        except _MilvusRemoteSearchError as exc:
+            warnings.warn(f"{exc}", RuntimeWarning, stacklevel=2)
+            matches = []
         if len(matches) < limit:
             existing = {result.memory_id for result in matches}
             for local in self._search_local(query_vector):
