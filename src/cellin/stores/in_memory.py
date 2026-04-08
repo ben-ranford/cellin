@@ -5,11 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
-
-
-def _edge_archived(edge: MemoryEdge) -> bool:
-    archived = edge.metadata.get("archived")
-    return bool(archived) if isinstance(archived, bool) else False
+from cellin.stores._graph_serialization import edge_is_archived
 
 
 class InMemoryMemoryStore:
@@ -72,8 +68,8 @@ class InMemoryGraphStore:
             edge
             for edge in self._edges.values()
             if edge.source_id == memory_id or edge.target_id == memory_id
-            if not _edge_archived(edge)
+            if not edge_is_archived(edge)
         )
 
     def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return tuple(edge for edge in self._edges.values() if not _edge_archived(edge))
+        return tuple(edge for edge in self._edges.values() if not edge_is_archived(edge))

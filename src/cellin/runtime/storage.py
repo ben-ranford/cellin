@@ -316,6 +316,8 @@ def setup_storage_backends(
 def _resolve_database_path(path_value: str | None, *, workspace_root: Path) -> str:
     if path_value is None:
         raise StorageBackendError("`database_path` is required for this backend")
+    if path_value == ":memory__":
+        return path_value
 
     configured_path = Path(path_value)
     resolved_path = (

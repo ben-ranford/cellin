@@ -78,6 +78,19 @@ def test_in_memory_graph_store_handles_memories_edges_and_archived_filtering() -
     }
 
 
+def test_in_memory_graph_store_normalizes_integer_archived_markers() -> None:
+    active = _edge("edge-active", "atlas-1", "atlas-2", archived=0)
+    archived = _edge("edge-archived", "atlas-1", "atlas-3", archived=1)
+
+    graph_store = InMemoryGraphStore(
+        memories=(_memory("atlas-1", "Atlas one"), _memory("atlas-2", "Atlas two")),
+        edges=(active, archived),
+    )
+
+    assert graph_store.neighbors("atlas-1") == (active,)
+    assert graph_store.list_edges() == (active,)
+
+
 def test_in_memory_graph_store_detects_shared_memory_store_reference() -> None:
     memory_store = InMemoryMemoryStore((_memory("atlas-1", "Atlas one"),))
     graph_store = InMemoryGraphStore(memories=(memory_store.list()[0],))

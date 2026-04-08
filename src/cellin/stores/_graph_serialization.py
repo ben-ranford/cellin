@@ -96,6 +96,9 @@ def load_memory_payload(raw: Mapping[str, object]) -> MemoryAtom:
     provenance = _require_mapping(raw.get("provenance"), field_name="provenance")
     decay = _require_mapping(raw.get("decay"), field_name="decay")
     retrieval = _require_mapping(raw.get("retrieval"), field_name="retrieval")
+    provenance_metadata = _require_mapping(
+        provenance.get("metadata"), field_name="provenance.metadata"
+    )
     embeddings = _require_list(raw.get("embeddings", []), field_name="embeddings")
     created_at = _parse_dt(raw.get("created_at"))
     if created_at is None:
@@ -113,7 +116,7 @@ def load_memory_payload(raw: Mapping[str, object]) -> MemoryAtom:
             ),
             uri=cast(str | None, provenance.get("uri")),
             ingest_run_id=cast(str | None, provenance.get("ingest_run_id")),
-            metadata=cast(dict[str, JSONValue], provenance.get("metadata", {})),
+            metadata=cast(dict[str, JSONValue], provenance_metadata),
         ),
         modality=Modality(_require_str(raw.get("modality"), field_name="modality")),
         created_at=created_at,
@@ -190,6 +193,9 @@ def edge_payload(edge: MemoryEdge) -> dict[str, object]:
 
 def load_edge_payload(raw: Mapping[str, object]) -> MemoryEdge:
     provenance = _require_mapping(raw.get("provenance"), field_name="provenance")
+    provenance_metadata = _require_mapping(
+        provenance.get("metadata"), field_name="provenance.metadata"
+    )
     created_at = _parse_dt(raw.get("created_at"))
     if created_at is None:
         raise TypeError("created_at payload must be present")
@@ -207,7 +213,7 @@ def load_edge_payload(raw: Mapping[str, object]) -> MemoryEdge:
             ),
             uri=cast(str | None, provenance.get("uri")),
             ingest_run_id=cast(str | None, provenance.get("ingest_run_id")),
-            metadata=cast(dict[str, JSONValue], provenance.get("metadata", {})),
+            metadata=cast(dict[str, JSONValue], provenance_metadata),
         ),
         created_at=created_at,
         weight=_require_number(raw.get("weight"), field_name="weight"),
@@ -228,4 +234,8 @@ def load_edge(payload: str) -> MemoryEdge:
 
 def edge_is_archived(edge: MemoryEdge) -> bool:
     archived = edge.metadata.get("archived")
-    return bool(archived) if isinstance(archived, bool) else False
+    if isinstance(archived, bool):
+        return archived
+    if isinstance(archived, int):
+        return archived != 0
+    return False
