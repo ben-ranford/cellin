@@ -150,6 +150,48 @@ def test_deduplication_skips_single_member_topics_and_archived_duplicates() -> N
     assert graph_store.list_edges() == ()
 
 
+def test_deduplication_skips_members_archived_earlier_in_same_run() -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    strategy = DeduplicationDreamStrategy(similarity_threshold=0.5)
+    canonical = _memory("canonical", "atlas alpha beta", topic="atlas", observed_at=now, trust=1.0)
+    duplicate = _memory(
+        "duplicate",
+        "atlas alpha beta gamma epsilon",
+        topic="atlas",
+        observed_at=now,
+        trust=0.9,
+    )
+    newer = _memory(
+        "newer",
+        "atlas gamma epsilon",
+        topic="atlas",
+        observed_at=now,
+        trust=0.8,
+    )
+    memory_store = InMemoryMemoryStore((canonical, duplicate, newer))
+    graph_store = InMemoryGraphStore((canonical, duplicate, newer))
+    outcome = _MutationOutcome.empty()
+
+    strategy._merge_topic_members(
+        members=[canonical, duplicate, newer],
+        at=now,
+        graph_store=graph_store,
+        memory_store=memory_store,
+        outcome=outcome,
+    )
+
+    canonical_after = memory_store.get("canonical")
+    duplicate_after = memory_store.get("duplicate")
+    newer_after = memory_store.get("newer")
+
+    assert canonical_after is not None
+    assert duplicate_after is not None
+    assert newer_after is not None
+    assert duplicate_after.decay.archived is True
+    assert newer_after.decay.archived is False
+    assert outcome.pairs == [("duplicate", "canonical")]
+
+
 def test_contradiction_repair_skips_non_conflicts_and_existing_edges() -> None:
     now = datetime(2026, 4, 5, tzinfo=UTC)
     strategy = ContradictionRepairDreamStrategy()
@@ -199,6 +241,54 @@ def test_contradiction_repair_skips_non_conflicts_and_existing_edges() -> None:
     )
 
     assert outcome.pairs == []
+
+
+def test_contradiction_repair_iterates_only_forward_unique_pairs() -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    calls: list[tuple[str, str]] = []
+
+    class _CapturingContradictionStrategy(ContradictionRepairDreamStrategy):
+        def _repair_pair(
+            self,
+            *,
+            older: MemoryAtom,
+            newer: MemoryAtom,
+            at: datetime,
+            graph_store: GraphStore,
+            memory_store: MemoryStore,
+            existing_edges: dict[str, MemoryEdge],
+            outcome: _MutationOutcome,
+        ) -> None:
+            calls.append((older.memory_id, newer.memory_id))
+            super()._repair_pair(
+                older=older,
+                newer=newer,
+                at=at,
+                graph_store=graph_store,
+                memory_store=memory_store,
+                existing_edges=existing_edges,
+                outcome=outcome,
+            )
+
+    strategy = _CapturingContradictionStrategy()
+    first = _memory("first", "Atlas plan has 1 stage", topic="atlas", observed_at=now)
+    second = _memory(
+        "second",
+        "Atlas plan has 2 stage",
+        topic="atlas",
+        observed_at=now,
+    )
+    third = _memory("third", "Atlas plan has 3 stage", topic="atlas", observed_at=now)
+    strategy._repair_topic_members(
+        members=[first, second, third],
+        at=now,
+        graph_store=InMemoryGraphStore((first, second, third)),
+        memory_store=InMemoryMemoryStore((first, second, third)),
+        existing_edges={},
+        outcome=_MutationOutcome.empty(),
+    )
+
+    assert calls == [("first", "second"), ("first", "third"), ("second", "third")]
 
 
 def test_abstraction_returns_none_when_topics_do_not_qualify() -> None:

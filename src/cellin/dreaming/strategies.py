@@ -240,10 +240,14 @@ class DeduplicationDreamStrategy:
         memory_store: MemoryStore,
         outcome: _MutationOutcome,
     ) -> None:
-        if not self._is_merge_candidate(left=left, right=right):
+        left_actual = memory_store.get(left.memory_id) or left
+        right_actual = memory_store.get(right.memory_id) or right
+        if left_actual.decay.archived or right_actual.decay.archived:
+            return
+        if not self._is_merge_candidate(left=left_actual, right=right_actual):
             return
 
-        canonical, duplicate = self._canonical_duplicate_pair(left=left, right=right)
+        canonical, duplicate = self._canonical_duplicate_pair(left=left_actual, right=right_actual)
         if duplicate.decay.archived:
             return
 
@@ -382,8 +386,8 @@ class ContradictionRepairDreamStrategy:
         outcome: _MutationOutcome,
     ) -> None:
         ordered = sorted(members, key=lambda memory: memory.observed_at or memory.created_at)
-        for older in ordered[:-1]:
-            for newer in ordered[1:]:
+        for older_index, older in enumerate(ordered[:-1]):
+            for newer in ordered[older_index + 1 :]:
                 self._repair_pair(
                     older=older,
                     newer=newer,
