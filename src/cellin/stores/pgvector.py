@@ -13,7 +13,7 @@ class _MissingPgVectorDependencyError(RuntimeError):
     """Raised when pgvector is unavailable from runtime dependencies."""
 
 
-_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_TABLE_NAME_RE = re.compile(r"^[A-Za-z_]\w*$", re.ASCII)
 
 
 def _quote_identifier(value: str) -> str:
