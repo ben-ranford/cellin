@@ -231,12 +231,16 @@ def load_storage_backends_from_entry_points(
         providers = _load_storage_backend_provider_target(entry_point.load())
 
         for provider in providers:
+            role_registry = _BACKEND_REGISTRY[provider.role]
+            previous_provider = role_registry.get(provider.backend)
             try:
                 register_storage_backends(provider)
             except StorageBackendError:
                 # registration is idempotent across process boundaries; ignore repeats
                 pass
-            loaded.append(f"{provider.role}:{provider.backend}")
+            else:
+                if role_registry.get(provider.backend) is not previous_provider:
+                    loaded.append(f"{provider.role}:{provider.backend}")
 
     return tuple(loaded)
 
@@ -352,7 +356,7 @@ def _resolve_connection_string(
     backend_name: str,
 ) -> str:
     connection_string = config.database_path
-    if not connection_string:
+    if not connection_string or not connection_string.strip():
         raise StorageBackendError(f"{backend_name} backend requires a connection string")
     return connection_string
 
@@ -525,9 +529,7 @@ def _build_pgvector_store(
     workspace_root: Path,
 ) -> VectorStore:
     del workspace_root
-    connection_string = config.database_path
-    if connection_string is None:
-        raise StorageBackendError("pgvector backend requires a connection string")
+    connection_string = _resolve_connection_string(config, backend_name="pgvector")
     return PGVectorStore(connection_string)
 
 
