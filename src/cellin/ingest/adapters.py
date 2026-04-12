@@ -41,8 +41,12 @@ class TextAdapter:
         return modality is Modality.TEXT
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, str)
-        return _artifact(envelope, content=envelope.payload)
+        payload = envelope.payload
+        if not isinstance(payload, str):
+            raise TypeError(
+                f"TextAdapter adapter expected payload of type {str}, got {type(payload)!r}"
+            )
+        return _artifact(envelope, content=payload)
 
 
 @dataclass(slots=True)
@@ -53,8 +57,12 @@ class MarkdownAdapter:
         return modality is Modality.MARKDOWN
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, str)
-        return _artifact(envelope, content=envelope.payload)
+        payload = envelope.payload
+        if not isinstance(payload, str):
+            raise TypeError(
+                f"MarkdownAdapter adapter expected payload of type {str}, got {type(payload)!r}"
+            )
+        return _artifact(envelope, content=payload)
 
 
 @dataclass(slots=True)
@@ -65,10 +73,15 @@ class JSONAdapter:
         return modality is Modality.JSON
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, dict | list)
+        payload = envelope.payload
+        if not isinstance(payload, (dict, list)):
+            raise TypeError(
+                "JSONAdapter adapter expected payload of type "
+                f"{(dict, list)}, got {type(payload)!r}"
+            )
         return _artifact(
             envelope,
-            content=json.dumps(envelope.payload, sort_keys=True),
+            content=json.dumps(payload, sort_keys=True),
         )
 
 
@@ -80,16 +93,22 @@ class ChatAdapter:
         return modality is Modality.CHAT
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, dict)
-        messages = envelope.payload.get("messages", [])
-        assert isinstance(messages, list)
+        payload = envelope.payload
+        if not isinstance(payload, dict):
+            raise TypeError(
+                f"ChatAdapter adapter expected payload of type {dict}, got {type(payload)!r}"
+            )
+        messages = payload.get("messages", [])
+        if not isinstance(messages, list):
+            raise TypeError("ChatAdapter adapter expected payload['messages'] to be a list")
         rendered_messages: list[str] = []
         for message in messages:
-            assert isinstance(message, dict)
+            if not isinstance(message, dict):
+                raise TypeError("ChatAdapter adapter expected each payload message to be a dict")
             role = str(message.get("role", "unknown"))
             content = str(message.get("content", ""))
             rendered_messages.append(f"{role}: {content}")
-        metadata = {"conversation_id": envelope.payload.get("conversation_id")}
+        metadata = {"conversation_id": payload.get("conversation_id")}
         return _artifact(envelope, content="\n".join(rendered_messages), metadata=metadata)
 
 
@@ -103,14 +122,18 @@ class ImageAdapter:
         return modality is Modality.IMAGE
 
     def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
-        assert isinstance(envelope.payload, dict)
+        payload = envelope.payload
+        if not isinstance(payload, dict):
+            raise TypeError(
+                f"ImageAdapter adapter expected payload of type {dict}, got {type(payload)!r}"
+            )
 
         if self.text_provider is not None:
             content = self.text_provider(envelope)
         else:
-            caption = envelope.payload.get("caption")
-            ocr_text = envelope.payload.get("ocr_text") or envelope.metadata.get("ocr_text")
-            path = envelope.payload.get("path", "unknown-image")
+            caption = payload.get("caption")
+            ocr_text = payload.get("ocr_text") or envelope.metadata.get("ocr_text")
+            path = payload.get("path", "unknown-image")
             parts = [
                 str(value)
                 for value in (caption, ocr_text, f"Image asset: {path}")
@@ -121,7 +144,7 @@ class ImageAdapter:
         return _artifact(
             envelope,
             content=content,
-            metadata={"image_path": envelope.payload.get("path")},
+            metadata={"image_path": payload.get("path")},
         )
 
 

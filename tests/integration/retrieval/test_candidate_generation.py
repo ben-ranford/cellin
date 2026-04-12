@@ -218,6 +218,39 @@ def test_collect_prefers_hybrid_lexical_and_vector_seeding_with_graph_expansion(
     assert collected[2].metadata["graph_distance"] == 1
 
 
+def test_collect_preserves_hybrid_seed_metadata() -> None:
+    memories = (
+        _memory("atlas-lexical", "Atlas retrieval ranking"),
+        _memory("atlas-vector", "Atlas retrieval overlap"),
+        _memory("fallback", "unrelated"),
+    )
+    edges = (_edge("vector-to-fallback", "atlas-vector", "fallback"),)
+    generator = RetrievalCandidateGenerator(
+        memory_store=_memory_store(memories),
+        graph_store=_graph_store(memories, edges),
+        vector_store=_FakeVectorStore(
+            (
+                ("atlas-vector", 0.9),
+                ("atlas-lexical", 0.8),
+                ("fallback", 0.5),
+            )
+        ),
+        lexical_limit=2,
+    )
+
+    collected = generator.collect("Atlas retrieval", limit=3)
+
+    assert tuple(memory.memory_id for memory in collected) == (
+        "atlas-lexical",
+        "atlas-vector",
+        "fallback",
+    )
+    assert collected[0].metadata["graph_distance"] == 0
+    assert collected[0].metadata["vector_score"] == pytest.approx(0.8)
+    assert collected[1].metadata["graph_distance"] == 0
+    assert collected[1].metadata["vector_score"] == pytest.approx(0.9)
+
+
 def test_collect_uses_vector_candidates_when_lexical_candidates_are_absent() -> None:
     memories = (
         _memory("seed-vector", "gamma delta"),

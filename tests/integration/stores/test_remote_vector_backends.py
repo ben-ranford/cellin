@@ -494,7 +494,8 @@ def test_qdrant_search_uses_local_matches_when_remote_query_errors(
 
     monkeypatch.setattr(backend._client, "query_points", query_points)
 
-    assert tuple(item.memory_id for item in store.search("atlas", limit=10)) == ("memory-1",)
+    with pytest.warns(RuntimeWarning, match="qdrant remote query failed"):
+        assert tuple(item.memory_id for item in store.search("atlas", limit=10)) == ("memory-1",)
 
 
 def test_qdrant_vector_payload_helpers_handle_fallback_types() -> None:
@@ -802,6 +803,19 @@ def test_pinecone_uses_init_path_when_pinecone_connector_is_unavailable(
     assert state["init_called"] is True
 
 
+def test_pinecone_cache_key_includes_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    pinecone_store._BACKENDS.clear()
+    _install_pinecone(monkeypatch)
+
+    store = PineconeVectorStore("https://localhost:8100/cellin_vectors")
+    other_host_store = PineconeVectorStore("https://other-host:8100/cellin_vectors")
+
+    assert store._backend is not other_host_store._backend
+
+    peer = PineconeVectorStore("https://other-host:8100/cellin_vectors")
+    assert other_host_store._backend is peer._backend
+
+
 def test_pinecone_vector_store_filters_tombstones_and_reuses_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1003,7 +1017,8 @@ def test_milvus_search_uses_empty_remote_results_on_general_failure(
         )()
 
     store._backend._collection = collection  # type: ignore[method-assign]
-    assert tuple(item.memory_id for item in store.search("query", limit=10)) == ("memory-1",)
+    with pytest.warns(RuntimeWarning, match="milvus remote search failed"):
+        assert tuple(item.memory_id for item in store.search("query", limit=10)) == ("memory-1",)
 
 
 def _install_redis_vector(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1080,6 +1095,28 @@ def test_redis_vector_store_handles_invalid_payloads_and_missing_vectors(
 
     assert tuple(item.memory_id for item in store.search("query", limit=10)) == ("memory-1",)
     assert store.search("query", limit=0) == ()
+
+
+def test_redis_vector_store_escapes_pattern_characters_in_collection_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_redis_vector(monkeypatch)
+
+    store = RedisVectorStore("redis://localhost:6379/0?collection=cell[in]?*v")
+    backend = store._backend
+    observed: dict[str, str | None] = {"match": None}
+
+    def capture_scan_match(match: str) -> list[str]:
+        observed["match"] = match
+        return []
+
+    monkeypatch.setattr(backend._client, "scan_iter", capture_scan_match)
+    assert store.search("query", limit=10) == ()
+    assert observed["match"] == "cellin:0:vector:cell\\[in\\]\\?\\*v:*"
+
+
+def test_redis_escape_scan_match() -> None:
+    assert redis_vector_store._escape_scan_match("cell[in]?*v") == r"cell\[in\]\?\*v"
 
 
 def test_redis_vector_store_does_not_remarshal_collection_initialization(

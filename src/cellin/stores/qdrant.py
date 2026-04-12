@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable, Mapping
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -12,6 +13,10 @@ from cellin.stores.vector_utils import cosine_similarity, vectorize
 
 class _MissingQdrantDependencyError(RuntimeError):
     """Raised when Qdrant dependencies are unavailable."""
+
+
+class _QdrantRemoteQueryError(RuntimeError):
+    """Raised when qdrant remote query fails unexpectedly."""
 
 
 def _normalize_connection_and_collection(connection_string: str) -> tuple[str, str]:
@@ -158,8 +163,8 @@ class _QdrantBackend:
                 with_vectors=True,
             )
             raw_points = getattr(response, "points", ())
-        except Exception:
-            return []
+        except Exception as exc:
+            raise _QdrantRemoteQueryError("qdrant remote query failed") from exc
 
         for raw_point in raw_points:
             memory_id, vector, archived = self._extract_point(raw_point)
@@ -190,8 +195,11 @@ class _QdrantBackend:
 
         query_vector = vectorize(query)
         merged: dict[str, VectorMatch] = {}
-        for match in self._query_remote(query_vector, limit=limit):
-            merged[match.memory_id] = match
+        try:
+            for match in self._query_remote(query_vector, limit=limit):
+                merged[match.memory_id] = match
+        except _QdrantRemoteQueryError as exc:
+            warnings.warn(f"{exc}", RuntimeWarning, stacklevel=2)
         for match in self._local_matches(query_vector):
             if match.memory_id in self._tombstones or match.memory_id in merged:
                 continue
