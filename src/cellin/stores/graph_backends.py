@@ -393,6 +393,9 @@ class Neo4jGraphStore(GraphStore):
     ) -> None:
         self._backend = _backend or _neo4j_backend(connection_string)
 
+    def shares_memory_store(self, memory_store: object) -> bool:
+        return False
+
     def upsert_memory(self, memory: MemoryAtom) -> None:
         self._backend.upsert_memory(memory)
 
@@ -428,6 +431,9 @@ class MemgraphGraphStore(GraphStore):
     ) -> None:
         self._backend = _backend or _memgraph_backend(connection_string)
 
+    def shares_memory_store(self, memory_store: object) -> bool:
+        return False
+
     def upsert_memory(self, memory: MemoryAtom) -> None:
         self._backend.upsert_memory(memory)
 
@@ -462,6 +468,9 @@ class ArangoDBGraphStore(GraphStore):
         _backend: _ArangoGraphBackend | None = None,
     ) -> None:
         self._backend = _backend or _arangodb_backend(connection_string)
+
+    def shares_memory_store(self, memory_store: object) -> bool:
+        return False
 
     def upsert_memory(self, memory: MemoryAtom) -> None:
         self._backend.upsert_memory(memory)
