@@ -114,12 +114,22 @@ class _FakeMongoClient:
 class _FakeRedisClient:
     def __init__(self) -> None:
         self._payloads: dict[str, str] = {}
+        self._sets: dict[str, set[str]] = {}
 
     def set(self, key: str, value: str) -> None:
         self._payloads[key] = value
 
     def get(self, key: str) -> str | None:
         return self._payloads.get(key)
+
+    def sadd(self, key: str, *members: str) -> int:
+        s = self._sets.setdefault(key, set())
+        added = len(set(members) - s)
+        s.update(members)
+        return added
+
+    def smembers(self, key: str) -> set[str]:
+        return set(self._sets.get(key, set()))
 
     def scan_iter(self, pattern: str) -> tuple[str, ...]:
         prefix = pattern[:-1] if pattern.endswith("*") else pattern
