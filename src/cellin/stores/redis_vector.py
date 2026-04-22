@@ -6,6 +6,7 @@ import json
 from urllib.parse import parse_qs, urlparse
 
 from cellin.core import VectorMatch
+from cellin.stores._remote_vector_base import _RemoteVectorBackendBase
 from cellin.stores.vector_utils import cosine_similarity, vectorize
 
 
@@ -30,7 +31,7 @@ def _parse_namespace(connection_string: str) -> tuple[str, str]:
     return namespace, collection_name
 
 
-class _RedisVectorBackend:
+class _RedisVectorBackend(_RemoteVectorBackendBase):
     def __init__(self, connection_string: str) -> None:
         try:
             import redis  # type: ignore[import-not-found]

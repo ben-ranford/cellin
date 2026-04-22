@@ -1126,3 +1126,30 @@ def test_redis_vector_store_does_not_remarshal_collection_initialization(
     store = RedisVectorStore("redis://localhost:6379/0?collection=cellin_vectors")
     store._backend._initialize_collection()
     assert store._backend._initialized is True
+
+
+def test_local_matches_is_defined_only_on_remote_vector_backend_base() -> None:
+    """_local_matches must live on _RemoteVectorBackendBase, not redefined in subclasses."""
+    from cellin.stores import milvus as milvus_store
+    from cellin.stores import pinecone as pinecone_store
+    from cellin.stores import qdrant as qdrant_store
+    from cellin.stores import redis_vector as redis_vector_store
+    from cellin.stores import weaviate as weaviate_store
+    from cellin.stores._remote_vector_base import _RemoteVectorBackendBase
+
+    backend_classes = [
+        qdrant_store._QdrantBackend,
+        weaviate_store._WeaviateBackend,
+        milvus_store._MilvusBackend,
+        pinecone_store._PineconeBackend,
+        redis_vector_store._RedisVectorBackend,
+    ]
+
+    for backend_cls in backend_classes:
+        assert issubclass(backend_cls, _RemoteVectorBackendBase), (
+            f"{backend_cls.__name__} must subclass _RemoteVectorBackendBase"
+        )
+        assert "_local_matches" not in backend_cls.__dict__, (
+            f"{backend_cls.__name__} must not redefine _local_matches "
+            f"(it is inherited from _RemoteVectorBackendBase)"
+        )
