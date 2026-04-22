@@ -44,6 +44,12 @@ class _RedisBackend:
     def _edge_key(self, edge_id: str) -> str:
         return f"{self._namespace}:edge:{edge_id}"
 
+    def _edge_by_src_key(self, memory_id: str) -> str:
+        return f"{self._namespace}:edge-by-src:{memory_id}"
+
+    def _edge_by_tgt_key(self, memory_id: str) -> str:
+        return f"{self._namespace}:edge-by-tgt:{memory_id}"
+
     def put_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
         for memory in memories:
             self._client.set(self._memory_key(memory.memory_id), dump_memory(memory))
@@ -65,18 +71,22 @@ class _RedisBackend:
     def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
         for edge in edges:
             self._client.set(self._edge_key(edge.edge_id), dump_edge(edge))
+            self._client.sadd(self._edge_by_src_key(edge.source_id), edge.edge_id)
+            self._client.sadd(self._edge_by_tgt_key(edge.target_id), edge.edge_id)
 
     def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
+        src_ids = self._client.smembers(self._edge_by_src_key(memory_id))
+        tgt_ids = self._client.smembers(self._edge_by_tgt_key(memory_id))
+        all_ids = src_ids | tgt_ids
         edges = []
-        for key in sorted(str(key) for key in self._client.scan_iter(f"{self._namespace}:edge:*")):
-            payload = self._client.get(key)
+        for edge_id in sorted(all_ids):
+            payload = self._client.get(self._edge_key(str(edge_id)))
             if payload is None:
                 continue
             edge = load_edge(str(payload))
             if edge_is_archived(edge):
                 continue
-            if edge.source_id == memory_id or edge.target_id == memory_id:
-                edges.append(edge)
+            edges.append(edge)
         return tuple(edges)
 
     def list_edges(self) -> tuple[MemoryEdge, ...]:

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 from cellin.core import VectorMatch
+from cellin.stores._remote_vector_base import (
+    _RemoteVectorBackendBase,
+    normalize_connection_and_collection,
+)
 from cellin.stores.vector_utils import cosine_similarity, vectorize
 
 
@@ -15,16 +18,7 @@ class _MissingWeaviateDependencyError(RuntimeError):
 
 
 def _normalize_connection_and_collection(connection_string: str) -> tuple[str, str]:
-    parsed = urlparse(connection_string)
-    query = parse_qs(parsed.query)
-
-    endpoint = (
-        f"{parsed.scheme}://{parsed.netloc}"
-        if parsed.scheme
-        else connection_string.split("?", 1)[0]
-    )
-    collection = query.get("collection", [parsed.path.strip("/")])[0].strip()
-    return endpoint.rstrip("/"), collection or "cellin_vectors"
+    return normalize_connection_and_collection(connection_string)
 
 
 def _coerce_vector(value: object) -> tuple[float, ...]:
@@ -43,7 +37,7 @@ def _coerce_mapping(value: object) -> Mapping[str, object]:
     return {}
 
 
-class _WeaviateBackend:
+class _WeaviateBackend(_RemoteVectorBackendBase):
     _VECTOR_DIMENSION = 12
 
     def __init__(self, connection_string: str) -> None:
@@ -145,16 +139,6 @@ class _WeaviateBackend:
         if not isinstance(objects, (list, tuple)):
             return []
         return list(objects)
-
-    def _local_matches(self, query_vector: tuple[float, ...]) -> list[VectorMatch]:
-        return [
-            VectorMatch(
-                memory_id=memory_id,
-                score=round(cosine_similarity(query_vector, vector), 6),
-            )
-            for memory_id, vector in self._vectors.items()
-            if memory_id not in self._tombstones
-        ]
 
     def upsert(self, memory_id: str, text: str) -> None:
         vector = vectorize(text)
