@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 
-from cellin.core import MemoryBundle, ScoredMemory
+from cellin.core import MemoryBundle, MemoryStore, ScoredMemory, VectorStore
 from cellin.ranking.profiles import WeightProfile
 from cellin.ranking.weighted import WeightedRanker
 from cellin.retrieval.candidate_generation import RetrievalCandidateGenerator
@@ -24,6 +25,14 @@ class WeightedRetriever:
     candidate_generator: RetrievalCandidateGenerator
     ranker: WeightedRanker
     profile: WeightProfile
+    memory_store: MemoryStore | None = None
+    representation_store: VectorStore | None = None
+
+    def __post_init__(self) -> None:
+        # Wire representation_store into the candidate generator when the generator
+        # has no primary vector_store configured.
+        if self.representation_store is not None and self.candidate_generator.vector_store is None:
+            self.candidate_generator.vector_store = self.representation_store
 
     def retrieve(self, query: str, top_k: int = 5) -> MemoryBundle:
         if top_k <= 0:
@@ -41,6 +50,7 @@ class WeightedRetriever:
         )
         ranked = self.ranker.score(query, candidates)
         selected = self._fit_to_budget(ranked[:top_k], token_budget=self.profile.token_budget)
+        self._write_back_access(list(selected))
         total_score = round(sum(item.score for item in selected), 6)
         summary = ", ".join(item.memory.memory_id for item in selected) if selected else None
         return MemoryBundle(
@@ -50,6 +60,20 @@ class WeightedRetriever:
             summary=summary,
             token_budget=self.profile.token_budget,
         )
+
+    def _write_back_access(self, memories: list[ScoredMemory]) -> None:
+        """Increment access_count and update last_accessed_at for selected memories."""
+        if self.memory_store is None:
+            return
+        now = datetime.now(UTC)
+        for m in memories:
+            updated_retrieval = replace(
+                m.memory.retrieval,
+                access_count=m.memory.retrieval.access_count + 1,
+                last_accessed_at=now,
+            )
+            updated_memory = replace(m.memory, retrieval=updated_retrieval)
+            self.memory_store.put(updated_memory)
 
     def _fit_to_budget(
         self,
