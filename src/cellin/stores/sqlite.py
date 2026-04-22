@@ -9,32 +9,20 @@ from pathlib import Path
 
 from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
 from cellin.stores._graph_serialization import (
-    dump_edge,
-    dump_memory,
-    edge_is_archived,
-    load_edge,
-    load_memory,
+    dump_edge as _dump_edge,
 )
-
-
-def _edge_archived(edge: MemoryEdge) -> bool:
-    return edge_is_archived(edge)
-
-
-def _dump_memory(memory: MemoryAtom) -> str:
-    return dump_memory(memory)
-
-
-def _load_memory(payload: str) -> MemoryAtom:
-    return load_memory(payload)
-
-
-def _dump_edge(edge: MemoryEdge) -> str:
-    return dump_edge(edge)
-
-
-def _load_edge(payload: str) -> MemoryEdge:
-    return load_edge(payload)
+from cellin.stores._graph_serialization import (
+    dump_memory as _dump_memory,
+)
+from cellin.stores._graph_serialization import (
+    edge_is_archived as _edge_archived,
+)
+from cellin.stores._graph_serialization import (
+    load_edge as _load_edge,
+)
+from cellin.stores._graph_serialization import (
+    load_memory as _load_memory,
+)
 
 
 class _SQLiteBackend:
