@@ -73,7 +73,7 @@ class WeightedRanker:
 
     profile: WeightProfile
     now_provider: Callable[[], datetime] = lambda: datetime.now(UTC)
-    _weight_total: float = field(init=False, repr=False, compare=False)
+    _weight_total: float = field(default=0.0, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         total = (
