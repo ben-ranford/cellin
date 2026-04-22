@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from math import log1p
 
@@ -64,10 +64,34 @@ def _vector_similarity(memory: MemoryAtom) -> float:
 
 @dataclass(slots=True)
 class WeightedRanker:
-    """Explainable weighted ranking over memory atoms."""
+    """Explainable weighted ranking over memory atoms.
+
+    Factor weights in *profile* need not sum to 1.0 — they are normalised
+    internally so that ``score`` always returns a value in ``[0.0, 1.0]``
+    when all individual factor values are in ``[0.0, 1.0]``.
+    """
 
     profile: WeightProfile
     now_provider: Callable[[], datetime] = lambda: datetime.now(UTC)
+    _weight_total: float = field(default=0.0, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        total = (
+            self.profile.semantic_similarity
+            + self.profile.vector_similarity
+            + self.profile.graph_proximity
+            + self.profile.recency
+            + self.profile.salience
+            + self.profile.trust
+            + self.profile.reinforcement
+            + self.profile.modality_match
+        )
+        if total <= 0.0:
+            raise ValueError(
+                f"WeightProfile '{self.profile.name}' has all-zero factor weights; "
+                "cannot normalise."
+            )
+        self._weight_total = total
 
     def score(self, query: str, memories: Sequence[MemoryAtom]) -> tuple[ScoredMemory, ...]:
         now = self.now_provider()
@@ -120,15 +144,16 @@ class WeightedRanker:
                     rationale="Vector-space similarity from the hybrid retrieval pass.",
                 ),
             )
+            w = self._weight_total
             total = (
-                self.profile.semantic_similarity * factors[0].value
-                + self.profile.vector_similarity * factors[7].value
-                + self.profile.graph_proximity * factors[1].value
-                + self.profile.recency * factors[2].value
-                + self.profile.salience * factors[3].value
-                + self.profile.trust * factors[4].value
-                + self.profile.reinforcement * factors[5].value
-                + self.profile.modality_match * factors[6].value
+                (self.profile.semantic_similarity / w) * factors[0].value
+                + (self.profile.vector_similarity / w) * factors[7].value
+                + (self.profile.graph_proximity / w) * factors[1].value
+                + (self.profile.recency / w) * factors[2].value
+                + (self.profile.salience / w) * factors[3].value
+                + (self.profile.trust / w) * factors[4].value
+                + (self.profile.reinforcement / w) * factors[5].value
+                + (self.profile.modality_match / w) * factors[6].value
             )
             scored.append(ScoredMemory(memory=memory, score=round(total, 6), factors=factors))
 
