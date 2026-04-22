@@ -13,6 +13,7 @@ from cellin.stores._graph_serialization import (
     load_edge,
     load_memory,
 )
+from cellin.stores._store_utils import filter_memories
 
 
 class _MissingRedisDependencyError(RuntimeError):
@@ -127,15 +128,7 @@ class RedisMemoryStore:
         archived: bool | None = None,
         topic: str | None = None,
     ) -> Sequence[MemoryAtom]:
-        """Return memories filtered by archived state and/or topic."""
-        result: list[MemoryAtom] = []
-        for memory in self._backend.list_memories():
-            if archived is not None and memory.decay.archived != archived:
-                continue
-            if topic is not None and memory.metadata.get("topic") != topic:
-                continue
-            result.append(memory)
-        return result
+        return filter_memories(self._backend.list_memories(), archived=archived, topic=topic)
 
 
 class RedisGraphStore:
