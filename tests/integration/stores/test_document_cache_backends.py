@@ -4,51 +4,17 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from datetime import UTC, datetime
 from types import ModuleType
 
 import pytest
+from tests.integration.stores._helpers import assert_list_by_filtering, make_edge, make_memory
 
-from cellin.core import (
-    DecayState,
-    EdgeKind,
-    MemoryAtom,
-    MemoryEdge,
-    MemoryKind,
-    Modality,
-    Provenance,
-    RetrievalStats,
-)
 from cellin.stores import MongoDBGraphStore, MongoDBMemoryStore, RedisGraphStore, RedisMemoryStore
 from cellin.stores import mongodb as mongodb_stores
 from cellin.stores import redis as redis_stores
 
-
-def _memory(memory_id: str, text: str) -> MemoryAtom:
-    now = datetime(2026, 4, 5, tzinfo=UTC)
-    return MemoryAtom(
-        memory_id=memory_id,
-        kind=MemoryKind.ATOM,
-        text=text,
-        provenance=Provenance(source_id=memory_id, source_type="fixture"),
-        modality=Modality.TEXT,
-        created_at=now,
-        observed_at=now,
-        decay=DecayState(half_life_days=14.0),
-        retrieval=RetrievalStats(),
-    )
-
-
-def _edge(edge_id: str, source_id: str, target_id: str, *, archived: bool) -> MemoryEdge:
-    return MemoryEdge(
-        edge_id=edge_id,
-        source_id=source_id,
-        target_id=target_id,
-        kind=EdgeKind.SUPPORTS,
-        provenance=Provenance(source_id=edge_id, source_type="fixture"),
-        created_at=datetime(2026, 4, 5, tzinfo=UTC),
-        metadata={"archived": archived},
-    )
+_memory = make_memory
+_edge = make_edge
 
 
 class _FakeMongoCollection:
@@ -248,38 +214,6 @@ def test_document_cache_memory_store_list_by_filters_archived_and_topic(
     clear_backends: Callable[[], None],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from dataclasses import replace
-
     clear_backends()
     install_backend(monkeypatch)
-
-    memory_store = memory_cls(connection_string)
-
-    active_atlas = replace(
-        _memory("active-atlas", "atlas memory"),
-        decay=DecayState(archived=False, half_life_days=14.0),
-        metadata={"topic": "atlas"},
-    )
-    archived_atlas = replace(
-        _memory("archived-atlas", "old atlas memory"),
-        decay=DecayState(archived=True, half_life_days=14.0),
-        metadata={"topic": "atlas"},
-    )
-    active_beta = replace(
-        _memory("active-beta", "beta memory"),
-        decay=DecayState(archived=False, half_life_days=14.0),
-        metadata={"topic": "beta"},
-    )
-    memory_store.put_many((active_atlas, archived_atlas, active_beta))
-
-    active_only = memory_store.list_by(archived=False)
-    assert {m.memory_id for m in active_only} == {"active-atlas", "active-beta"}
-
-    archived_only = memory_store.list_by(archived=True)
-    assert {m.memory_id for m in archived_only} == {"archived-atlas"}
-
-    atlas_only = memory_store.list_by(topic="atlas")
-    assert {m.memory_id for m in atlas_only} == {"active-atlas", "archived-atlas"}
-
-    active_atlas_only = memory_store.list_by(archived=False, topic="atlas")
-    assert {m.memory_id for m in active_atlas_only} == {"active-atlas"}
+    assert_list_by_filtering(memory_cls(connection_string))

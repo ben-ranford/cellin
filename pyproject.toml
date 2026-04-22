@@ -87,6 +87,7 @@ path = "src/cellin/__about__.py"
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 target-version = "py312"

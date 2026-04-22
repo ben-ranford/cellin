@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from cellin.core import (
@@ -11,7 +10,6 @@ from cellin.core import (
     EdgeKind,
     GraphStore,
     MemoryAtom,
-    MemoryEdge,
     MemoryKind,
     MemoryStore,
     Modality,
@@ -27,60 +25,7 @@ from cellin.dreaming import (
 from cellin.dreaming.benchmarks import seeded_dream_benchmark_cases
 from cellin.ranking import WeightedRanker, get_weight_profile
 from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
-from cellin.stores._store_utils import filter_memories
-
-
-class InMemoryMemoryStore(MemoryStore):
-    def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-
-    def put(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return tuple(self._memories.values())
-
-    def list_by(
-        self,
-        *,
-        archived: bool | None = None,
-        topic: str | None = None,
-    ) -> Sequence[MemoryAtom]:
-        return filter_memories(self._memories.values(), archived=archived, topic=topic)
-
-
-class InMemoryGraphStore(GraphStore):
-    def __init__(
-        self,
-        memories: tuple[MemoryAtom, ...],
-        edges: tuple[MemoryEdge, ...] = (),
-    ) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-        self._edges = {edge.edge_id: edge for edge in edges}
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._edges[edge.edge_id] = edge
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return tuple(
-            edge
-            for edge in self.list_edges()
-            if edge.source_id == memory_id or edge.target_id == memory_id
-        )
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return tuple(
-            edge for edge in self._edges.values() if edge.metadata.get("archived") is not True
-        )
+from cellin.stores import InMemoryGraphStore, InMemoryMemoryStore
 
 
 def _memory(

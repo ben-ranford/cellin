@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import pytest
@@ -29,7 +28,7 @@ from cellin.dreaming.strategies import (
     _similarity,
     _string_list,
 )
-from cellin.stores._store_utils import filter_memories
+from cellin.stores import InMemoryGraphStore, InMemoryMemoryStore
 
 
 def _memory(
@@ -55,53 +54,6 @@ def _memory(
         retrieval=RetrievalStats(),
         metadata={"topic": topic},
     )
-
-
-class InMemoryMemoryStore(MemoryStore):
-    def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-
-    def put(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return tuple(self._memories.values())
-
-    def list_by(
-        self,
-        *,
-        archived: bool | None = None,
-        topic: str | None = None,
-    ) -> Sequence[MemoryAtom]:
-        return filter_memories(self._memories.values(), archived=archived, topic=topic)
-
-
-class InMemoryGraphStore(GraphStore):
-    def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-        self._edges: dict[str, MemoryEdge] = {}
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._edges[edge.edge_id] = edge
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return tuple(
-            edge
-            for edge in self._edges.values()
-            if edge.source_id == memory_id or edge.target_id == memory_id
-        )
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return tuple(self._edges.values())
 
 
 def test_strategy_helpers_handle_empty_tokens_string_lists_and_archived_grouping() -> None:
