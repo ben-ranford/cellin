@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import dataclass as _dc
 from importlib import metadata
 from pathlib import Path
 from typing import Literal, Protocol, cast
@@ -328,30 +329,6 @@ def _resolve_database_path(path_value: str | None, *, workspace_root: Path) -> s
     return str(resolved_path)
 
 
-def _build_sqlite_memory_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> MemoryStore:
-    database_path = _resolve_database_path(
-        config.database_path,
-        workspace_root=workspace_root,
-    )
-    return SQLiteMemoryStore(database_path)
-
-
-def _build_sqlite_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    database_path = _resolve_database_path(
-        config.database_path,
-        workspace_root=workspace_root,
-    )
-    return SQLiteGraphStore(database_path)
-
-
 def _resolve_connection_string(
     config: StorageBackendConfig,
     *,
@@ -363,323 +340,220 @@ def _resolve_connection_string(
     return connection_string
 
 
-def _build_duckdb_memory_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> MemoryStore:
-    database_path = _resolve_database_path(
-        config.database_path,
-        workspace_root=workspace_root,
-    )
-    return DuckDBMemoryStore(database_path)
+# ---------------------------------------------------------------------------
+# Table-driven built-in backend registry
+# ---------------------------------------------------------------------------
 
 
-def _build_duckdb_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    database_path = _resolve_database_path(
-        config.database_path,
-        workspace_root=workspace_root,
-    )
-    return DuckDBGraphStore(database_path)
+@_dc(frozen=True)
+class _BackendEntry:
+    role: StorageRole
+    name: str
+    factory: Callable[[StorageBackendConfig, Path], object]
 
 
-def _build_postgresql_memory_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> MemoryStore:
-    del workspace_root
-    return PostgreSQLMemoryStore(_resolve_connection_string(config, backend_name="postgresql"))
+# ---------------------------------------------------------------------------
+# _BUILTIN_BACKENDS — one row per (role, backend-name) pair.
+#
+# Each lambda references module-level class names directly so that
+# monkeypatching ``cellin.runtime.storage.<ClassName>`` in tests works
+# correctly — the name is resolved at call time, not at table-construction
+# time.
+#
+# vector vs. representation divergence:
+#   As of this version both roles expose an identical set of backends.
+#   The two roles are conceptually distinct (short-term episodic retrieval vs.
+#   semantic / embedding-based lookup), but no built-in backend is currently
+#   exclusive to one role.  If a future backend should appear in only one role
+#   (e.g. a specialised embedding store not suitable for raw memory lookup),
+#   add it to the appropriate section below and leave the other role without
+#   that entry.  The assertion after the table documents that the current
+#   equivalence is intentional and will catch accidental drift.
+# ---------------------------------------------------------------------------
 
+_BUILTIN_BACKENDS: list[_BackendEntry] = [
+    # -- memory role --------------------------------------------------------
+    _BackendEntry(
+        "memory",
+        "duckdb",
+        lambda c, r: DuckDBMemoryStore(_resolve_database_path(c.database_path, workspace_root=r)),
+    ),
+    _BackendEntry("memory", "in_memory", lambda c, r: InMemoryMemoryStore()),
+    _BackendEntry(
+        "memory",
+        "mongodb",
+        lambda c, r: MongoDBMemoryStore(_resolve_connection_string(c, backend_name="mongodb")),
+    ),
+    _BackendEntry(
+        "memory",
+        "mysql",
+        lambda c, r: MySQLMemoryStore(_resolve_connection_string(c, backend_name="mysql")),
+    ),
+    _BackendEntry(
+        "memory",
+        "postgresql",
+        lambda c, r: PostgreSQLMemoryStore(
+            _resolve_connection_string(c, backend_name="postgresql")
+        ),
+    ),
+    _BackendEntry(
+        "memory",
+        "redis",
+        lambda c, r: RedisMemoryStore(_resolve_connection_string(c, backend_name="redis")),
+    ),
+    _BackendEntry(
+        "memory",
+        "sqlite",
+        lambda c, r: SQLiteMemoryStore(_resolve_database_path(c.database_path, workspace_root=r)),
+    ),
+    # -- graph role ---------------------------------------------------------
+    _BackendEntry(
+        "graph",
+        "arangodb",
+        lambda c, r: ArangoDBGraphStore(_resolve_connection_string(c, backend_name="arangodb")),
+    ),
+    _BackendEntry(
+        "graph",
+        "duckdb",
+        lambda c, r: DuckDBGraphStore(_resolve_database_path(c.database_path, workspace_root=r)),
+    ),
+    _BackendEntry("graph", "in_memory", lambda c, r: InMemoryGraphStore()),
+    _BackendEntry(
+        "graph",
+        "memgraph",
+        lambda c, r: MemgraphGraphStore(_resolve_connection_string(c, backend_name="memgraph")),
+    ),
+    _BackendEntry(
+        "graph",
+        "mongodb",
+        lambda c, r: MongoDBGraphStore(_resolve_connection_string(c, backend_name="mongodb")),
+    ),
+    _BackendEntry(
+        "graph",
+        "mysql",
+        lambda c, r: MySQLGraphStore(_resolve_connection_string(c, backend_name="mysql")),
+    ),
+    _BackendEntry(
+        "graph",
+        "neo4j",
+        lambda c, r: Neo4jGraphStore(_resolve_connection_string(c, backend_name="neo4j")),
+    ),
+    _BackendEntry(
+        "graph",
+        "postgresql",
+        lambda c, r: PostgreSQLGraphStore(_resolve_connection_string(c, backend_name="postgresql")),
+    ),
+    _BackendEntry(
+        "graph",
+        "redis",
+        lambda c, r: RedisGraphStore(_resolve_connection_string(c, backend_name="redis")),
+    ),
+    _BackendEntry(
+        "graph",
+        "sqlite",
+        lambda c, r: SQLiteGraphStore(_resolve_database_path(c.database_path, workspace_root=r)),
+    ),
+    # -- vector role --------------------------------------------------------
+    # Intentionally mirrors the representation role exactly (see comment above).
+    _BackendEntry("vector", "in_memory_vector_index", lambda c, r: InMemoryVectorIndex()),
+    _BackendEntry(
+        "vector",
+        "milvus",
+        lambda c, r: MilvusVectorStore(_resolve_connection_string(c, backend_name="milvus")),
+    ),
+    _BackendEntry(
+        "vector",
+        "pgvector",
+        lambda c, r: PGVectorStore(_resolve_connection_string(c, backend_name="pgvector")),
+    ),
+    _BackendEntry(
+        "vector",
+        "pinecone",
+        lambda c, r: PineconeVectorStore(_resolve_connection_string(c, backend_name="pinecone")),
+    ),
+    _BackendEntry(
+        "vector",
+        "qdrant",
+        lambda c, r: QdrantVectorStore(_resolve_connection_string(c, backend_name="qdrant")),
+    ),
+    _BackendEntry(
+        "vector",
+        "redis_vector",
+        lambda c, r: RedisVectorStore(_resolve_connection_string(c, backend_name="redis_vector")),
+    ),
+    _BackendEntry(
+        "vector",
+        "sqlite_vec",
+        lambda c, r: SQLiteVecStore(_resolve_database_path(c.database_path, workspace_root=r)),
+    ),
+    _BackendEntry(
+        "vector",
+        "weaviate",
+        lambda c, r: WeaviateVectorStore(_resolve_connection_string(c, backend_name="weaviate")),
+    ),
+    # -- representation role ------------------------------------------------
+    # Intentionally mirrors the vector role exactly (see comment above).
+    _BackendEntry("representation", "in_memory_vector_index", lambda c, r: InMemoryVectorIndex()),
+    _BackendEntry(
+        "representation",
+        "milvus",
+        lambda c, r: MilvusVectorStore(_resolve_connection_string(c, backend_name="milvus")),
+    ),
+    _BackendEntry(
+        "representation",
+        "pgvector",
+        lambda c, r: PGVectorStore(_resolve_connection_string(c, backend_name="pgvector")),
+    ),
+    _BackendEntry(
+        "representation",
+        "pinecone",
+        lambda c, r: PineconeVectorStore(_resolve_connection_string(c, backend_name="pinecone")),
+    ),
+    _BackendEntry(
+        "representation",
+        "qdrant",
+        lambda c, r: QdrantVectorStore(_resolve_connection_string(c, backend_name="qdrant")),
+    ),
+    _BackendEntry(
+        "representation",
+        "redis_vector",
+        lambda c, r: RedisVectorStore(_resolve_connection_string(c, backend_name="redis_vector")),
+    ),
+    _BackendEntry(
+        "representation",
+        "sqlite_vec",
+        lambda c, r: SQLiteVecStore(_resolve_database_path(c.database_path, workspace_root=r)),
+    ),
+    _BackendEntry(
+        "representation",
+        "weaviate",
+        lambda c, r: WeaviateVectorStore(_resolve_connection_string(c, backend_name="weaviate")),
+    ),
+]
 
-def _build_postgresql_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    del workspace_root
-    return PostgreSQLGraphStore(_resolve_connection_string(config, backend_name="postgresql"))
-
-
-def _build_mysql_memory_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> MemoryStore:
-    del workspace_root
-    return MySQLMemoryStore(_resolve_connection_string(config, backend_name="mysql"))
-
-
-def _build_mysql_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    del workspace_root
-    return MySQLGraphStore(_resolve_connection_string(config, backend_name="mysql"))
-
-
-def _build_in_memory_memory_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> MemoryStore:
-    del config, workspace_root
-    return InMemoryMemoryStore()
-
-
-def _build_in_memory_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    del config, workspace_root
-    return InMemoryGraphStore()
-
-
-def _build_mongodb_memory_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> MemoryStore:
-    del workspace_root
-    return MongoDBMemoryStore(_resolve_connection_string(config, backend_name="mongodb"))
-
-
-def _build_mongodb_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    del workspace_root
-    return MongoDBGraphStore(_resolve_connection_string(config, backend_name="mongodb"))
-
-
-def _build_redis_memory_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> MemoryStore:
-    del workspace_root
-    return RedisMemoryStore(_resolve_connection_string(config, backend_name="redis"))
-
-
-def _build_redis_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    del workspace_root
-    return RedisGraphStore(_resolve_connection_string(config, backend_name="redis"))
-
-
-def _build_neo4j_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    del workspace_root
-    return Neo4jGraphStore(_resolve_connection_string(config, backend_name="neo4j"))
-
-
-def _build_memgraph_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    del workspace_root
-    return MemgraphGraphStore(_resolve_connection_string(config, backend_name="memgraph"))
-
-
-def _build_arangodb_graph_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> GraphStore:
-    del workspace_root
-    return ArangoDBGraphStore(_resolve_connection_string(config, backend_name="arangodb"))
-
-
-def _build_vector_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> VectorStore:
-    del config, workspace_root
-    return InMemoryVectorIndex()
-
-
-def _build_sqlite_vec_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> VectorStore:
-    database_path = _resolve_database_path(
-        config.database_path,
-        workspace_root=workspace_root,
-    )
-    return SQLiteVecStore(database_path)
-
-
-def _build_pgvector_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> VectorStore:
-    del workspace_root
-    connection_string = _resolve_connection_string(config, backend_name="pgvector")
-    return PGVectorStore(connection_string)
-
-
-def _build_pinecone_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> VectorStore:
-    del workspace_root
-    return PineconeVectorStore(_resolve_connection_string(config, backend_name="pinecone"))
-
-
-def _build_qdrant_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> VectorStore:
-    del workspace_root
-    return QdrantVectorStore(_resolve_connection_string(config, backend_name="qdrant"))
-
-
-def _build_weaviate_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> VectorStore:
-    del workspace_root
-    return WeaviateVectorStore(_resolve_connection_string(config, backend_name="weaviate"))
-
-
-def _build_milvus_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> VectorStore:
-    del workspace_root
-    return MilvusVectorStore(_resolve_connection_string(config, backend_name="milvus"))
-
-
-def _build_redis_vector_store(
-    config: StorageBackendConfig,
-    *,
-    workspace_root: Path,
-) -> VectorStore:
-    del workspace_root
-    return RedisVectorStore(_resolve_connection_string(config, backend_name="redis_vector"))
+# Assert that vector and representation expose exactly the same backend names.
+# This documents that the current equivalence is deliberate (see comment above).
+assert {e.name for e in _BUILTIN_BACKENDS if e.role == "vector"} == {
+    e.name for e in _BUILTIN_BACKENDS if e.role == "representation"
+}, (
+    "vector and representation built-in backend sets have diverged; "
+    "update the comment block above _BUILTIN_BACKENDS to explain any intentional difference"
+)
 
 
 def _register_builtin_backends() -> None:
     if _BACKEND_REGISTRY["memory"]:
         return
 
-    register_storage_backends(
-        StorageBackendProvider(role="memory", backend="duckdb", builder=_build_duckdb_memory_store),
-        StorageBackendProvider(role="memory", backend="mysql", builder=_build_mysql_memory_store),
-        StorageBackendProvider(role="memory", backend="sqlite", builder=_build_sqlite_memory_store),
-        StorageBackendProvider(
-            role="memory", backend="in_memory", builder=_build_in_memory_memory_store
-        ),
-        StorageBackendProvider(
-            role="memory", backend="postgresql", builder=_build_postgresql_memory_store
-        ),
-        StorageBackendProvider(
-            role="memory", backend="mongodb", builder=_build_mongodb_memory_store
-        ),
-        StorageBackendProvider(role="memory", backend="redis", builder=_build_redis_memory_store),
-    )
-
-    register_storage_backends(
-        StorageBackendProvider(
-            role="graph", backend="arangodb", builder=_build_arangodb_graph_store
-        ),
-        StorageBackendProvider(role="graph", backend="duckdb", builder=_build_duckdb_graph_store),
-        StorageBackendProvider(
-            role="graph", backend="in_memory", builder=_build_in_memory_graph_store
-        ),
-        StorageBackendProvider(
-            role="graph", backend="memgraph", builder=_build_memgraph_graph_store
-        ),
-        StorageBackendProvider(role="graph", backend="mongodb", builder=_build_mongodb_graph_store),
-        StorageBackendProvider(role="graph", backend="mysql", builder=_build_mysql_graph_store),
-        StorageBackendProvider(role="graph", backend="neo4j", builder=_build_neo4j_graph_store),
-        StorageBackendProvider(
-            role="graph", backend="postgresql", builder=_build_postgresql_graph_store
-        ),
-        StorageBackendProvider(role="graph", backend="redis", builder=_build_redis_graph_store),
-        StorageBackendProvider(role="graph", backend="sqlite", builder=_build_sqlite_graph_store),
-    )
-
-    register_storage_backends(
-        StorageBackendProvider(
-            role="vector", backend="in_memory_vector_index", builder=_build_vector_store
-        ),
-        StorageBackendProvider(
-            role="vector", backend="sqlite_vec", builder=_build_sqlite_vec_store
-        ),
-        StorageBackendProvider(role="vector", backend="pgvector", builder=_build_pgvector_store),
-        StorageBackendProvider(role="vector", backend="pinecone", builder=_build_pinecone_store),
-        StorageBackendProvider(role="vector", backend="qdrant", builder=_build_qdrant_store),
-        StorageBackendProvider(role="vector", backend="weaviate", builder=_build_weaviate_store),
-        StorageBackendProvider(role="vector", backend="milvus", builder=_build_milvus_store),
-        StorageBackendProvider(
-            role="vector", backend="redis_vector", builder=_build_redis_vector_store
-        ),
-    )
-
-    register_storage_backends(
-        StorageBackendProvider(
-            role="representation",
-            backend="in_memory_vector_index",
-            builder=_build_vector_store,
-        ),
-        StorageBackendProvider(
-            role="representation",
-            backend="sqlite_vec",
-            builder=_build_sqlite_vec_store,
-        ),
-        StorageBackendProvider(
-            role="representation",
-            backend="pgvector",
-            builder=_build_pgvector_store,
-        ),
-        StorageBackendProvider(
-            role="representation",
-            backend="pinecone",
-            builder=_build_pinecone_store,
-        ),
-        StorageBackendProvider(
-            role="representation",
-            backend="qdrant",
-            builder=_build_qdrant_store,
-        ),
-        StorageBackendProvider(
-            role="representation",
-            backend="weaviate",
-            builder=_build_weaviate_store,
-        ),
-        StorageBackendProvider(
-            role="representation",
-            backend="milvus",
-            builder=_build_milvus_store,
-        ),
-        StorageBackendProvider(
-            role="representation",
-            backend="redis_vector",
-            builder=_build_redis_vector_store,
-        ),
-    )
+    for entry in _BUILTIN_BACKENDS:
+        _f = entry.factory
+        register_storage_backends(
+            StorageBackendProvider(
+                role=entry.role,
+                backend=entry.name,
+                builder=lambda config, *, workspace_root, _f=_f: _f(config, workspace_root),
+            )
+        )
 
 
 def build_storage_bundle(
