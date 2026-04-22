@@ -20,6 +20,7 @@ from cellin.cli.config import (
 from cellin.core import Modality
 from cellin.core.models import JSONValue
 from cellin.dreaming import DreamRunner
+from cellin.dreaming.models import DreamDiff
 from cellin.evals import run_evaluation_suite
 from cellin.ingest import ArtifactEnvelope, CanonicalIngestor
 from cellin.ranking import WeightedRanker, get_weight_profile
@@ -34,6 +35,7 @@ from cellin.runtime import (
     load_storage_backends_from_entry_points,
     setup_storage_backends,
 )
+from cellin.runtime.storage import StorageConfig
 
 TRACE_INSPECT_SUCCESS_EXIT_CODE = 0
 STORAGE_ROLE_CHOICES = ("memory", "graph", "vector", "representation")
@@ -144,7 +146,7 @@ def cmd_retrieve(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_dream(args: argparse.Namespace) -> int:
+def cmd_dream_run(args: argparse.Namespace) -> int:
     config_path = Path(args.config)
     workspace = load_workspace(config_path)
     bundle = build_storage_bundle(workspace.storage, workspace_root=config_path.parent)
@@ -170,8 +172,76 @@ def cmd_dream(args: argparse.Namespace) -> int:
             f"summary={result.artifact.summary} "
             f"affected={','.join(result.artifact.affected_memory_ids)}"
         )
+        if args.diff_out is not None:
+            diff_path = Path(args.diff_out)
+            diff_path.parent.mkdir(parents=True, exist_ok=True)
+            diff_path.write_text(
+                json.dumps(result.diff.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+            )
+            print(f"diff written to {diff_path}")
     if not completed:
         print("no dream runs executed")
+    return 0
+
+
+def cmd_dream_inspect(args: argparse.Namespace) -> int:
+    diff_path = Path(args.diff_file)
+    raw = json.loads(diff_path.read_text(encoding="utf-8"))
+    diff = DreamDiff.from_dict(raw)
+
+    merged_ids = [
+        c.memory_id for c in diff.memory_changes if c.before is not None and c.after is not None
+    ]
+    archived_ids = [
+        c.memory_id for c in diff.memory_changes if c.after is not None and c.after.decay.archived
+    ]
+    trust_adjusted_ids = [
+        c.memory_id
+        for c in diff.memory_changes
+        if c.before is not None
+        and c.after is not None
+        and c.before.trust_score != c.after.trust_score
+    ]
+    edge_added_ids = [c.edge_id for c in diff.edge_changes if c.before is None]
+    edge_removed_ids = [
+        c.edge_id
+        for c in diff.edge_changes
+        if c.after is not None and c.after.metadata.get("archived")
+    ]
+
+    print(f"run_id={diff.run_id}")
+    print(f"strategy={diff.strategy_name}")
+    print(f"created_at={diff.created_at.isoformat()}")
+    print(f"memory_changes={len(diff.memory_changes)}")
+    print(f"edge_changes={len(diff.edge_changes)}")
+    print(f"merged_count={len(merged_ids)} ids={','.join(merged_ids) or 'none'}")
+    print(f"archived_count={len(archived_ids)} ids={','.join(archived_ids) or 'none'}")
+    print(
+        f"trust_adjusted_count={len(trust_adjusted_ids)} "
+        f"ids={','.join(trust_adjusted_ids) or 'none'}"
+    )
+    print(f"edges_added={len(edge_added_ids)} ids={','.join(edge_added_ids) or 'none'}")
+    print(f"edges_removed={len(edge_removed_ids)} ids={','.join(edge_removed_ids) or 'none'}")
+    return 0
+
+
+def cmd_dream_rollback(args: argparse.Namespace) -> int:
+    diff_path = Path(args.diff_file)
+    raw = json.loads(diff_path.read_text(encoding="utf-8"))
+    diff = DreamDiff.from_dict(raw)
+
+    config_path = Path(args.config)
+    workspace = load_workspace(config_path)
+    bundle = build_storage_bundle(workspace.storage, workspace_root=config_path.parent)
+    runner = DreamRunner(
+        graph_store=bundle.graph_store,
+        memory_store=bundle.memory_store,
+    )
+    runner.rollback(diff)
+    print(
+        f"rolled back run_id={diff.run_id} strategy={diff.strategy_name} "
+        f"memory_changes={len(diff.memory_changes)} edge_changes={len(diff.edge_changes)}"
+    )
     return 0
 
 
@@ -244,9 +314,20 @@ def cmd_storage_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_eval_storage_config(backend: str | None) -> StorageConfig | None:
+    if backend is None or backend == "sqlite":
+        return None
+    if backend == "in_memory":
+        return StorageConfig.with_in_memory_preset()
+    return None
+
+
 def cmd_eval_run(args: argparse.Namespace) -> int:
     output_path = Path(args.output) if args.output else Path("eval-results") / f"{args.suite}.json"
-    report = run_evaluation_suite(args.suite, output_path=output_path)
+    storage_config = _resolve_eval_storage_config(getattr(args, "backend", None))
+    report = run_evaluation_suite(
+        args.suite, output_path=output_path, storage_config=storage_config
+    )
     if args.config is not None:
         _record(
             Path(args.config),
@@ -298,12 +379,25 @@ def build_parser() -> argparse.ArgumentParser:
     retrieve_parser.set_defaults(handler=cmd_retrieve)
 
     dream_parser = subparsers.add_parser("dream")
-    dream_parser.add_argument("--config", required=True)
-    dream_parser.add_argument(
+    dream_subparsers = dream_parser.add_subparsers(dest="dream_command", required=True)
+
+    dream_run_parser = dream_subparsers.add_parser("run")
+    dream_run_parser.add_argument("--config", required=True)
+    dream_run_parser.add_argument(
         "--strategy",
         choices=("deduplication", "contradiction_repair", "abstraction"),
     )
-    dream_parser.set_defaults(handler=cmd_dream)
+    dream_run_parser.add_argument("--diff-out", metavar="PATH")
+    dream_run_parser.set_defaults(handler=cmd_dream_run)
+
+    dream_inspect_parser = dream_subparsers.add_parser("inspect")
+    dream_inspect_parser.add_argument("diff_file", metavar="diff-file")
+    dream_inspect_parser.set_defaults(handler=cmd_dream_inspect)
+
+    dream_rollback_parser = dream_subparsers.add_parser("rollback")
+    dream_rollback_parser.add_argument("--config", required=True)
+    dream_rollback_parser.add_argument("--diff-file", required=True, metavar="PATH")
+    dream_rollback_parser.set_defaults(handler=cmd_dream_rollback)
 
     storage_parser = subparsers.add_parser("storage")
     storage_subparsers = storage_parser.add_subparsers(dest="storage_command", required=True)
@@ -328,6 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
     eval_run_parser.add_argument("--suite", choices=("smoke", "full"), default="smoke")
     eval_run_parser.add_argument("--output")
     eval_run_parser.add_argument("--config")
+    eval_run_parser.add_argument("--backend", choices=("sqlite", "in_memory"), default="sqlite")
     eval_run_parser.set_defaults(handler=cmd_eval_run)
 
     trace_parser = subparsers.add_parser("trace")

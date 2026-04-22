@@ -22,6 +22,7 @@ from cellin.core import (
     VectorStore,
 )
 from cellin.evals.runner import run_evaluation_suite
+from cellin.runtime.storage import StorageConfig
 
 
 def _memory(memory_id: str, observed_at: datetime) -> MemoryAtom:
@@ -170,3 +171,26 @@ def test_ingest_case_with_empty_vector_output_is_hardened(
     assert case.status == "ok"
     assert case.metrics["vector_top_score"] == pytest.approx(0.0)
     assert case.notes["top_memory_id"] is None
+
+
+def test_ingest_case_with_in_memory_preset_succeeds_and_records_backend() -> None:
+    storage_config = StorageConfig.with_in_memory_preset()
+    case = eval_runner._run_ingest_case(storage_config)
+    assert case.status == "ok"
+    assert case.backend == "in_memory"
+    assert case.metrics["memory_count"] == pytest.approx(4.0)
+    assert case.metrics["edge_count"] >= 2.0
+
+
+def test_evaluation_case_result_to_dict_includes_backend() -> None:
+    storage_config = StorageConfig.with_in_memory_preset()
+    case = eval_runner._run_ingest_case(storage_config)
+    d = case.to_dict()
+    assert d["backend"] == "in_memory"
+
+
+def test_evaluation_case_result_default_backend_is_sqlite() -> None:
+    case = eval_runner._run_ingest_case()
+    assert case.backend == "sqlite"
+    d = case.to_dict()
+    assert d["backend"] == "sqlite"

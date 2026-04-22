@@ -5,10 +5,13 @@ from __future__ import annotations
 import warnings
 from collections.abc import Sequence
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 from cellin.core import VectorMatch
-from cellin.stores.vector_utils import cosine_similarity, vectorize
+from cellin.stores._remote_vector_base import (
+    _RemoteVectorBackendBase,
+    normalize_connection_and_collection,
+)
+from cellin.stores.vector_utils import vectorize
 
 
 class _MissingMilvusDependencyError(RuntimeError):
@@ -20,14 +23,7 @@ class _MilvusRemoteSearchError(RuntimeError):
 
 
 def _normalize_connection_and_collection(connection_string: str) -> tuple[str, str]:
-    parsed = urlparse(connection_string)
-    query = parse_qs(parsed.query)
-    collection = query.get("collection", [parsed.path.strip("/")])[0].strip()
-    if parsed.scheme:
-        endpoint = f"{parsed.scheme}://{parsed.netloc}"
-    else:
-        endpoint = connection_string.split("?", 1)[0]
-    return endpoint.rstrip("/"), collection or "cellin_vectors"
+    return normalize_connection_and_collection(connection_string)
 
 
 def _row_entities(hit: object) -> tuple[str, bool]:
@@ -41,7 +37,7 @@ def _row_entities(hit: object) -> tuple[str, bool]:
     return memory_id, bool(getattr(entity, "archived", False))
 
 
-class _MilvusBackend:
+class _MilvusBackend(_RemoteVectorBackendBase):
     _VECTOR_DIMENSION = 12
 
     def __init__(self, connection_string: str) -> None:
@@ -160,16 +156,6 @@ class _MilvusBackend:
             raise _MilvusRemoteSearchError("milvus remote search failed") from exc
         return results
 
-    def _search_local(self, query_vector: tuple[float, ...]) -> list[VectorMatch]:
-        return [
-            VectorMatch(
-                memory_id=memory_id,
-                score=round(cosine_similarity(query_vector, vector), 6),
-            )
-            for memory_id, vector in self._vectors.items()
-            if memory_id not in self._tombstones
-        ]
-
     def search(self, query: str, *, limit: int = 5) -> tuple[VectorMatch, ...]:
         if limit <= 0:
             return ()
@@ -182,7 +168,7 @@ class _MilvusBackend:
             matches = []
         if len(matches) < limit:
             existing = {result.memory_id for result in matches}
-            for local in self._search_local(query_vector):
+            for local in self._local_matches(query_vector):
                 if local.memory_id in existing:
                     continue
                 matches.append(local)
