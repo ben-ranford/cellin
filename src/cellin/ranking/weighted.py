@@ -64,10 +64,51 @@ def _vector_similarity(memory: MemoryAtom) -> float:
 
 @dataclass(slots=True)
 class WeightedRanker:
-    """Explainable weighted ranking over memory atoms."""
+    """Explainable weighted ranking over memory atoms.
+
+    The factor weights in *profile* are normalised at construction time so that
+    they sum to exactly 1.0.  This guarantees ``score`` returns a value in
+    ``[0.0, 1.0]`` whenever all individual factor values are in ``[0.0, 1.0]``.
+    """
 
     profile: WeightProfile
     now_provider: Callable[[], datetime] = lambda: datetime.now(UTC)
+
+    def __post_init__(self) -> None:
+        total = (
+            self.profile.semantic_similarity
+            + self.profile.vector_similarity
+            + self.profile.graph_proximity
+            + self.profile.recency
+            + self.profile.salience
+            + self.profile.trust
+            + self.profile.reinforcement
+            + self.profile.modality_match
+        )
+        if total == 0.0:
+            raise ValueError(
+                f"WeightProfile '{self.profile.name}' has all-zero factor weights; "
+                "cannot normalise."
+            )
+        if total != 1.0:
+            object.__setattr__(
+                self,
+                "profile",
+                WeightProfile(
+                    name=self.profile.name,
+                    semantic_similarity=self.profile.semantic_similarity / total,
+                    vector_similarity=self.profile.vector_similarity / total,
+                    graph_proximity=self.profile.graph_proximity / total,
+                    recency=self.profile.recency / total,
+                    salience=self.profile.salience / total,
+                    trust=self.profile.trust / total,
+                    reinforcement=self.profile.reinforcement / total,
+                    modality_match=self.profile.modality_match / total,
+                    token_budget=self.profile.token_budget,
+                    candidate_limit=self.profile.candidate_limit,
+                    recency_half_life_days=self.profile.recency_half_life_days,
+                ),
+            )
 
     def score(self, query: str, memories: Sequence[MemoryAtom]) -> tuple[ScoredMemory, ...]:
         now = self.now_provider()

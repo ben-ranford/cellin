@@ -7,7 +7,13 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class WeightProfile:
-    """A named set of factor weights for retrieval ranking."""
+    """A named set of factor weights for retrieval ranking.
+
+    Factor weights do not need to sum to 1.0 — ``WeightedRanker`` normalises
+    them automatically at construction time.  However, all weights must be
+    non-negative; a ``ValueError`` is raised on construction if any weight is
+    negative.
+    """
 
     name: str
     semantic_similarity: float
@@ -21,6 +27,21 @@ class WeightProfile:
     token_budget: int = 120
     candidate_limit: int = 8
     recency_half_life_days: float = 14.0
+
+    def __post_init__(self) -> None:
+        factor_weights = {
+            "semantic_similarity": self.semantic_similarity,
+            "vector_similarity": self.vector_similarity,
+            "graph_proximity": self.graph_proximity,
+            "recency": self.recency,
+            "salience": self.salience,
+            "trust": self.trust,
+            "reinforcement": self.reinforcement,
+            "modality_match": self.modality_match,
+        }
+        negative = [name for name, w in factor_weights.items() if w < 0]
+        if negative:
+            raise ValueError(f"WeightProfile '{self.name}' has negative factor weights: {negative}")
 
 
 PROFILES: dict[str, WeightProfile] = {
