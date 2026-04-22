@@ -86,7 +86,7 @@ class WeightedRanker:
             + self.profile.reinforcement
             + self.profile.modality_match
         )
-        if total == 0.0:
+        if total <= 0.0:
             raise ValueError(
                 f"WeightProfile '{self.profile.name}' has all-zero factor weights; "
                 "cannot normalise."
