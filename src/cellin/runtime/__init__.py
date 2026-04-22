@@ -1,6 +1,10 @@
 """Runtime loading and orchestration for Cellin."""
 
-from cellin.runtime.builtins import InMemoryTraceSinkPlugin
+from cellin.runtime.builtins import (
+    InMemoryTraceSinkPlugin,
+    WeightedRankerPlugin,
+    WeightedRetrieverPlugin,
+)
 from cellin.runtime.registry import PluginRegistry
 from cellin.runtime.storage import (
     DEFAULT_STORAGE_ENTRYPOINT_GROUP,
@@ -23,6 +27,8 @@ __all__ = [
     "DEFAULT_STORAGE_ENTRYPOINT_GROUP",
     "InMemoryTraceSinkPlugin",
     "PluginRegistry",
+    "WeightedRankerPlugin",
+    "WeightedRetrieverPlugin",
     "StorageBackendConfig",
     "StorageBackendError",
     "StorageBackendProvider",

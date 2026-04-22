@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -21,8 +20,8 @@ from cellin.core import (
 )
 from cellin.core.models import JSONValue
 from cellin.dreaming.models import DreamDiff, DreamEdgeChange, DreamMemoryChange, DreamRunResult
+from cellin.stores.vector_utils import _tokenize
 
-TOKEN_RE = re.compile(r"[a-z0-9]+")
 NEGATION_MARKERS = {
     "cancelled",
     "canceled",
@@ -36,21 +35,17 @@ NEGATION_MARKERS = {
 SUCCESS_MARKERS = {"completed", "green", "released", "shipped", "stable", "active", "enabled"}
 
 
-def _tokenize(text: str) -> set[str]:
-    return set(TOKEN_RE.findall(text.lower()))
-
-
 def _similarity(left: MemoryAtom, right: MemoryAtom) -> float:
-    left_tokens = _tokenize(left.text)
-    right_tokens = _tokenize(right.text)
+    left_tokens = set(_tokenize(left.text))
+    right_tokens = set(_tokenize(right.text))
     if not left_tokens or not right_tokens:
         return 0.0
     return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
 
 
 def _contains_conflict(left: MemoryAtom, right: MemoryAtom) -> bool:
-    left_tokens = _tokenize(left.text)
-    right_tokens = _tokenize(right.text)
+    left_tokens = set(_tokenize(left.text))
+    right_tokens = set(_tokenize(right.text))
     left_negative = bool(left_tokens & NEGATION_MARKERS)
     right_negative = bool(right_tokens & NEGATION_MARKERS)
     left_positive = bool(left_tokens & SUCCESS_MARKERS)
@@ -151,7 +146,9 @@ def _apply_memory_updates(
     changes: list[DreamMemoryChange] = []
     for before, after in before_after:
         memory_store.put(after)
-        graph_store.upsert_memory(after)
+        _shares = getattr(graph_store, "shares_memory_store", None)
+        if not callable(_shares) or not _shares(memory_store):
+            graph_store.upsert_memory(after)
         changes.append(DreamMemoryChange(before.memory_id, before, after))
     return changes
 
@@ -183,12 +180,17 @@ class DeduplicationDreamStrategy:
     ) -> DreamRunResult | None:
         when = at or datetime.now(UTC)
         outcome = _MutationOutcome.empty()
-        for members in _group_active_memories_by_topic(memory_store).values():
+        topic_groups = _group_active_memories_by_topic(memory_store)
+        memory_index: dict[str, MemoryAtom] = {
+            m.memory_id: m for members in topic_groups.values() for m in members
+        }
+        for members in topic_groups.values():
             self._merge_topic_members(
                 members=members,
                 at=when,
                 graph_store=graph_store,
                 memory_store=memory_store,
+                memory_index=memory_index,
                 outcome=outcome,
             )
 
@@ -212,6 +214,7 @@ class DeduplicationDreamStrategy:
         at: datetime,
         graph_store: GraphStore,
         memory_store: MemoryStore,
+        memory_index: dict[str, MemoryAtom],
         outcome: _MutationOutcome,
     ) -> None:
         if len(members) < 2:
@@ -225,6 +228,7 @@ class DeduplicationDreamStrategy:
                     at=at,
                     graph_store=graph_store,
                     memory_store=memory_store,
+                    memory_index=memory_index,
                     outcome=outcome,
                 )
 
@@ -236,10 +240,11 @@ class DeduplicationDreamStrategy:
         at: datetime,
         graph_store: GraphStore,
         memory_store: MemoryStore,
+        memory_index: dict[str, MemoryAtom],
         outcome: _MutationOutcome,
     ) -> None:
-        left_actual = memory_store.get(left.memory_id) or left
-        right_actual = memory_store.get(right.memory_id) or right
+        left_actual = memory_index.get(left.memory_id, left)
+        right_actual = memory_index.get(right.memory_id, right)
         if left_actual.decay.archived or right_actual.decay.archived:
             return
         if not self._is_merge_candidate(left=left_actual, right=right_actual):
@@ -261,6 +266,9 @@ class DeduplicationDreamStrategy:
             memory_store=memory_store,
             before_after=((canonical, canonical_after), (duplicate, duplicate_after)),
         )
+        for change in changes:
+            if change.after is not None:
+                memory_index[change.memory_id] = change.after
         graph_store.upsert_edge(edge_after)
         outcome.memory_changes.extend(changes)
         outcome.edge_changes.append(DreamEdgeChange(edge_after.edge_id, None, edge_after))
@@ -414,20 +422,21 @@ class ContradictionRepairDreamStrategy:
         if edge_id in existing_edges:
             return
 
+        fresh_older = memory_store.get(older.memory_id) or older
         older_after, newer_after = self._updated_contradiction_memories(
-            older=older,
+            older=fresh_older,
             newer=newer,
         )
         edge_after = self._contradiction_edge(
             edge_id=edge_id,
-            older=older,
+            older=fresh_older,
             newer=newer,
             at=at,
         )
         changes = _apply_memory_updates(
             graph_store=graph_store,
             memory_store=memory_store,
-            before_after=((older, older_after), (newer, newer_after)),
+            before_after=((fresh_older, older_after), (newer, newer_after)),
         )
         graph_store.upsert_edge(edge_after)
         existing_edges[edge_id] = edge_after

@@ -125,6 +125,17 @@ def test_load_memory_accepts_optional_half_life_days(
     assert loaded.decay.half_life_days is None
 
 
+def test_neo4j_and_memgraph_are_cypher_wrapper_instances() -> None:
+    from cellin.stores.graph_backends import (
+        MemgraphGraphStore,
+        Neo4jGraphStore,
+        _CypherGraphStoreWrapper,
+    )
+
+    assert issubclass(Neo4jGraphStore, _CypherGraphStoreWrapper)
+    assert issubclass(MemgraphGraphStore, _CypherGraphStoreWrapper)
+
+
 def test_load_edge_rejects_invalid_provenance_metadata_shape() -> None:
     edge = MemoryEdge(
         edge_id="edge-1",

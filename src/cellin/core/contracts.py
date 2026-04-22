@@ -110,6 +110,10 @@ class GraphStore(Protocol):
     def list_edges(self) -> Sequence[MemoryEdge]:
         """Return all active graph edges."""
 
+    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
+        """Return True if this graph store and memory_store write to the same backend."""
+        return False
+
 
 class MemoryStore(Protocol):
     """Persistence operations for retrievable memory atoms."""

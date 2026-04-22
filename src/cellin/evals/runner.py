@@ -138,6 +138,7 @@ class EvaluationCaseResult:
     baseline_metrics: dict[str, float] = field(default_factory=dict)
     delta_metrics: dict[str, float] = field(default_factory=dict)
     notes: dict[str, JSONValue] = field(default_factory=dict)
+    backend: str = "sqlite"
 
     def to_dict(self) -> dict[str, JSONValue]:
         metrics = _json_float_map(self.metrics)
@@ -146,6 +147,7 @@ class EvaluationCaseResult:
         return {
             "case_id": self.case_id,
             "status": self.status,
+            "backend": self.backend,
             "metrics": metrics,
             "baseline_metrics": baseline_metrics,
             "delta_metrics": delta_metrics,
@@ -215,10 +217,14 @@ def _project_edges() -> tuple[MemoryEdge, ...]:
     )
 
 
-def _run_ingest_case() -> EvaluationCaseResult:
+def _run_ingest_case(storage_config: StorageConfig | None = None) -> EvaluationCaseResult:
     with TemporaryDirectory() as directory:
-        database_path = Path(directory) / "cellin.sqlite"
-        storage = StorageConfig.with_sqlite_preset(str(database_path))
+        if storage_config is None:
+            database_path = Path(directory) / "cellin.sqlite"
+            storage = StorageConfig.with_sqlite_preset(str(database_path))
+        else:
+            storage = storage_config
+        backend_name = storage.memory.backend
         bundle = build_storage_bundle(storage, workspace_root=Path(directory))
         ingestor = CanonicalIngestor.with_built_in_adapters(
             graph_store=bundle.graph_store,
@@ -243,6 +249,7 @@ def _run_ingest_case() -> EvaluationCaseResult:
             baseline_metrics=baseline,
             delta_metrics=_delta(metrics, baseline),
             notes={"top_memory_id": _top_vector_memory_id(vector_results)},
+            backend=backend_name,
         )
 
 
@@ -385,10 +392,12 @@ def _run_performance_case() -> EvaluationCaseResult:
     )
 
 
-def _suite_cases(suite: str) -> tuple[EvaluationCaseResult, ...]:
+def _suite_cases(
+    suite: str, *, storage_config: StorageConfig | None = None
+) -> tuple[EvaluationCaseResult, ...]:
     if suite == "smoke":
         return (
-            _run_ingest_case(),
+            _run_ingest_case(storage_config),
             _run_retrieval_case(
                 benchmark_index=0,
                 corpus_name="project_memory",
@@ -399,7 +408,7 @@ def _suite_cases(suite: str) -> tuple[EvaluationCaseResult, ...]:
 
     if suite == "full":
         return (
-            _run_ingest_case(),
+            _run_ingest_case(storage_config),
             _run_retrieval_case(
                 benchmark_index=0,
                 corpus_name="project_memory",
@@ -423,8 +432,13 @@ def write_report(report: EvaluationReport, output_path: Path) -> None:
     output_path.write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
 
 
-def run_evaluation_suite(suite: str, *, output_path: Path | None = None) -> EvaluationReport:
-    cases = _suite_cases(suite)
+def run_evaluation_suite(
+    suite: str,
+    *,
+    output_path: Path | None = None,
+    storage_config: StorageConfig | None = None,
+) -> EvaluationReport:
+    cases = _suite_cases(suite, storage_config=storage_config)
     status = "ok" if all(case.status == "ok" for case in cases) else "failed"
     summary_metrics = {
         "case_count": float(len(cases)),
