@@ -11,6 +11,14 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         "src/cellin/__about__.py"
+      ],
+      "changelog-sections": [
+        {"type": "feat", "section": "Features"},
+        {"type": "fix", "section": "Bug Fixes"},
+        {"type": "perf", "section": "Performance Improvements"},
+        {"type": "revert", "section": "Reverts"},
+        {"type": "docs", "section": "Documentation"},
+        {"type": "refactor", "section": "Refactors"}
       ]
     }
   }
