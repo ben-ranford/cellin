@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -74,6 +75,21 @@ class InMemoryMemoryStore(MemoryStore):
 
     def list(self) -> tuple[MemoryAtom, ...]:
         return tuple(self.memories.values())
+
+    def list_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> Sequence[MemoryAtom]:
+        result: list[MemoryAtom] = []
+        for memory in self.memories.values():
+            if archived is not None and memory.decay.archived != archived:
+                continue
+            if topic is not None and memory.metadata.get("topic") != topic:
+                continue
+            result.append(memory)
+        return result
 
 
 @dataclass
@@ -232,3 +248,83 @@ def test_dream_runner_run_pending_and_rollback_cover_all_diff_paths() -> None:
     assert memory_store.get(original_memory.memory_id) == original_memory
     assert graph_store.edges[created_edge.edge_id].metadata["archived"] is True
     assert graph_store.edges[original_edge.edge_id] == original_edge
+
+
+def test_scheduler_plans_decay_archival_for_expired_memories() -> None:
+    from datetime import timedelta
+
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    old_date = now - timedelta(days=20)
+
+    expired = _memory("expired", "Old memory", observed_at=old_date, topic="atlas")
+    fresh = _memory("fresh", "Fresh memory", observed_at=now, topic="atlas")
+    scheduler = DeterministicDreamScheduler(
+        memory_store=InMemoryMemoryStore((expired, fresh)),
+        graph_store=InMemoryGraphStore((expired, fresh)),
+    )
+
+    runs = scheduler.plan(now)
+    assert any(run.strategy_name == "decay_archival" for run in runs)
+    decay_run = next(r for r in runs if r.strategy_name == "decay_archival")
+    assert "decay-candidates:1" in decay_run.reason
+
+
+def test_dream_runner_deletes_from_vector_store_on_archive() -> None:
+    from cellin.stores import InMemoryVectorIndex
+
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    original = _memory("atlas-1", "Atlas memory", observed_at=now, topic="atlas")
+    archived_version = _memory("atlas-1", "Atlas memory", observed_at=now, topic="atlas")
+
+    from dataclasses import replace as dc_replace
+
+    archived_version = dc_replace(
+        archived_version, decay=DecayState(archived=True, half_life_days=14.0)
+    )
+
+    diff = DreamDiff(
+        run_id="dream-run",
+        strategy_name="decay_archival",
+        created_at=now,
+        memory_changes=(DreamMemoryChange(original.memory_id, original, archived_version),),
+        edge_changes=(),
+    )
+    result = DreamRunResult(
+        artifact=DreamArtifact(
+            dream_id="dream-run",
+            strategy_name="decay_archival",
+            provenance=Provenance(source_id="dream-run", source_type="dream"),
+            created_at=now,
+            summary="Archived 1 decayed memories.",
+            affected_memory_ids=(original.memory_id,),
+        ),
+        diff=diff,
+    )
+    scheduler = StubScheduler(
+        planned_runs=(ScheduledDreamRun("decay_archival", now, "decay-candidates:1"),),
+        recorded_runs=[],
+    )
+    apply_strategy = StubStrategy(result)
+    memory_store = InMemoryMemoryStore((original,))
+    graph_store = InMemoryGraphStore((original,))
+    vector_store = InMemoryVectorIndex()
+    vector_store.upsert(original.memory_id, original.text)
+
+    runner = DreamRunner(
+        graph_store=graph_store,
+        memory_store=memory_store,
+        scheduler=scheduler,  # type: ignore[arg-type]
+        strategies={"decay_archival": apply_strategy},
+        vector_store=vector_store,
+    )
+
+    runner.run_pending(now=now)
+
+    # Vector entry should have been deleted for the archived memory
+    results = vector_store.search("Atlas memory", limit=5)
+    assert not any(r.memory_id == original.memory_id for r in results)
+
+    # Rollback should re-upsert vector
+    runner.rollback(diff)
+    results_after_rollback = vector_store.search("Atlas memory", limit=5)
+    assert any(r.memory_id == original.memory_id for r in results_after_rollback)

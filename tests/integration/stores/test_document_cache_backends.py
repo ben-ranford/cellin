@@ -212,3 +212,64 @@ def test_document_and_cache_backends_share_memory_store_and_filter_archived_edge
     assert duplicate_graph_store.shares_memory_store(memory_store)
     assert memory_store.get("memory-1").text == "Atlas revised"
     assert duplicate_memory_store.get("memory-3") == _memory("memory-3", "Third memory")
+
+
+@pytest.mark.parametrize(
+    "memory_cls,connection_string,install_backend,clear_backends",
+    [
+        (
+            MongoDBMemoryStore,
+            "mongodb://localhost:27017/cellin_list_by",
+            _install_fake_mongodb,
+            mongodb_stores._BACKENDS.clear,
+        ),
+        (
+            RedisMemoryStore,
+            "redis://localhost:6379/1",
+            _install_fake_redis,
+            redis_stores._BACKENDS.clear,
+        ),
+    ],
+)
+def test_document_cache_memory_store_list_by_filters_archived_and_topic(
+    memory_cls: type,
+    connection_string: str,
+    install_backend: Callable[[pytest.MonkeyPatch], None],
+    clear_backends: Callable[[], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import replace
+
+    clear_backends()
+    install_backend(monkeypatch)
+
+    memory_store = memory_cls(connection_string)
+
+    active_atlas = replace(
+        _memory("active-atlas", "atlas memory"),
+        decay=DecayState(archived=False, half_life_days=14.0),
+        metadata={"topic": "atlas"},
+    )
+    archived_atlas = replace(
+        _memory("archived-atlas", "old atlas memory"),
+        decay=DecayState(archived=True, half_life_days=14.0),
+        metadata={"topic": "atlas"},
+    )
+    active_beta = replace(
+        _memory("active-beta", "beta memory"),
+        decay=DecayState(archived=False, half_life_days=14.0),
+        metadata={"topic": "beta"},
+    )
+    memory_store.put_many((active_atlas, archived_atlas, active_beta))
+
+    active_only = memory_store.list_by(archived=False)
+    assert {m.memory_id for m in active_only} == {"active-atlas", "active-beta"}
+
+    archived_only = memory_store.list_by(archived=True)
+    assert {m.memory_id for m in archived_only} == {"archived-atlas"}
+
+    atlas_only = memory_store.list_by(topic="atlas")
+    assert {m.memory_id for m in atlas_only} == {"active-atlas", "archived-atlas"}
+
+    active_atlas_only = memory_store.list_by(archived=False, topic="atlas")
+    assert {m.memory_id for m in active_atlas_only} == {"active-atlas"}

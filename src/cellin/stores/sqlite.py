@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
 from pathlib import Path
 
@@ -121,6 +121,26 @@ class _SQLiteBackend:
             rows = connection.execute("SELECT payload FROM memories ORDER BY memory_id").fetchall()
         return tuple(_load_memory(row[0]) for row in rows)
 
+    def list_memories_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> list[MemoryAtom]:
+        conditions: list[str] = []
+        params: list[object] = []
+        if archived is not None:
+            conditions.append("json_extract(payload, '$.decay.archived') = ?")
+            params.append(1 if archived else 0)
+        if topic is not None:
+            conditions.append("json_extract(payload, '$.metadata.topic') = ?")
+            params.append(topic)
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        query = f"SELECT payload FROM memories {where_clause} ORDER BY memory_id"
+        with self._connected() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [_load_memory(row[0]) for row in rows]
+
     def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
         if not edges:
             return
@@ -188,6 +208,15 @@ class SQLiteMemoryStore(_SQLiteBase):
 
     def list(self) -> tuple[MemoryAtom, ...]:
         return self._backend.list_memories()
+
+    def list_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> Sequence[MemoryAtom]:
+        """Return memories filtered by archived state and/or topic using SQL WHERE clauses."""
+        return self._backend.list_memories_by(archived=archived, topic=topic)
 
 
 class SQLiteGraphStore(_SQLiteBase):

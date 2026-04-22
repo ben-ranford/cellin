@@ -99,9 +99,7 @@ def _string_list(value: JSONValue) -> list[str]:
 
 def _group_active_memories_by_topic(memory_store: MemoryStore) -> dict[str, list[MemoryAtom]]:
     topic_groups: dict[str, list[MemoryAtom]] = defaultdict(list)
-    for memory in memory_store.list():
-        if memory.decay.archived:
-            continue
+    for memory in memory_store.list_by(archived=False):
         topic = memory.metadata.get("topic")
         if isinstance(topic, str):
             topic_groups[topic].append(memory)
@@ -493,9 +491,7 @@ class AbstractionDreamStrategy:
     ) -> DreamRunResult | None:
         when = at or datetime.now(UTC)
         topic_groups: dict[str, list[MemoryAtom]] = defaultdict(list)
-        active_memories = tuple(
-            memory for memory in memory_store.list() if not memory.decay.archived
-        )
+        active_memories = tuple(memory_store.list_by(archived=False))
         for memory in active_memories:
             topic = memory.metadata.get("topic")
             if isinstance(topic, str) and memory.kind != MemoryKind.DREAM:
@@ -574,5 +570,62 @@ class AbstractionDreamStrategy:
             memory_changes=tuple(memory_changes),
             edge_changes=tuple(edge_changes),
             notes={"created_memory_ids": list(created_ids)},
+        )
+        return DreamRunResult(artifact=artifact, diff=diff)
+
+
+@dataclass(slots=True)
+class DecayArchivalDreamStrategy:
+    """Archives memories whose half_life_days decay period has elapsed."""
+
+    strategy_name: str = "decay_archival"
+
+    def execute(
+        self,
+        graph_store: GraphStore,
+        memory_store: MemoryStore,
+        *,
+        at: datetime | None = None,
+    ) -> DreamRunResult | None:
+        when = at or datetime.now(UTC)
+        memory_changes: list[DreamMemoryChange] = []
+        archived_ids: list[str] = []
+
+        for memory in memory_store.list_by(archived=False):
+            if memory.decay.half_life_days is None:
+                continue
+            reference_time = memory.observed_at or memory.created_at
+            age_days = (when - reference_time).days
+            if age_days <= memory.decay.half_life_days:
+                continue
+            archived_memory = replace(
+                memory,
+                decay=replace(memory.decay, archived=True),
+            )
+            memory_store.put(archived_memory)
+            graph_store.upsert_memory(archived_memory)
+            memory_changes.append(DreamMemoryChange(memory.memory_id, memory, archived_memory))
+            archived_ids.append(memory.memory_id)
+
+        if not archived_ids:
+            return None
+
+        run_id = f"{self.strategy_name}:{when.isoformat()}"
+        artifact = DreamArtifact(
+            dream_id=run_id,
+            strategy_name=self.strategy_name,
+            provenance=Provenance(source_id=run_id, source_type="dream"),
+            created_at=when,
+            summary=f"Archived {len(archived_ids)} decayed memories.",
+            affected_memory_ids=tuple(archived_ids),
+            metadata={"archived_memory_ids": list(archived_ids)},
+        )
+        diff = DreamDiff(
+            run_id=run_id,
+            strategy_name=self.strategy_name,
+            created_at=when,
+            memory_changes=tuple(memory_changes),
+            edge_changes=(),
+            notes={"archived_memory_ids": list(archived_ids)},
         )
         return DreamRunResult(artifact=artifact, diff=diff)

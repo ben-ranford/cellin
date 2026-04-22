@@ -7,12 +7,13 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Protocol
 
-from cellin.core import GraphStore, MemoryStore
+from cellin.core import GraphStore, MemoryStore, VectorStore
 from cellin.dreaming.models import DreamDiff, DreamRunResult
 from cellin.dreaming.scheduler import DeterministicDreamScheduler
 from cellin.dreaming.strategies import (
     AbstractionDreamStrategy,
     ContradictionRepairDreamStrategy,
+    DecayArchivalDreamStrategy,
     DeduplicationDreamStrategy,
 )
 
@@ -38,14 +39,17 @@ class DreamRunner:
         memory_store: MemoryStore,
         scheduler: DeterministicDreamScheduler | None = None,
         strategies: Mapping[str, DreamExecutable] | None = None,
+        vector_store: VectorStore | None = None,
     ) -> None:
         self.graph_store = graph_store
         self.memory_store = memory_store
+        self.vector_store = vector_store
         self.scheduler = scheduler or DeterministicDreamScheduler(memory_store, graph_store)
         self.strategies = strategies or {
             "deduplication": DeduplicationDreamStrategy(),
             "contradiction_repair": ContradictionRepairDreamStrategy(),
             "abstraction": AbstractionDreamStrategy(),
+            "decay_archival": DecayArchivalDreamStrategy(),
         }
 
     def run_strategy(
@@ -56,6 +60,16 @@ class DreamRunner:
         result = strategy.execute(self.graph_store, self.memory_store, at=when)
         if result is not None:
             self.scheduler.record_run(strategy_name, when)
+            if self.vector_store is not None and hasattr(self.vector_store, "delete"):
+                for change in result.diff.memory_changes:
+                    after = change.after
+                    before = change.before
+                    if (
+                        after is not None
+                        and after.decay.archived
+                        and (before is None or not before.decay.archived)
+                    ):
+                        self.vector_store.delete(after.memory_id)
         return result
 
     def run_pending(self, *, now: datetime | None = None) -> tuple[DreamRunResult, ...]:
@@ -92,5 +106,15 @@ class DreamRunner:
                 continue
 
             if memory_change.before is not None:
-                self.memory_store.put(memory_change.before)
-                self.graph_store.upsert_memory(memory_change.before)
+                restored = memory_change.before
+                self.memory_store.put(restored)
+                self.graph_store.upsert_memory(restored)
+                after = memory_change.after
+                if (
+                    self.vector_store is not None
+                    and hasattr(self.vector_store, "delete")
+                    and after is not None
+                    and after.decay.archived
+                    and not restored.decay.archived
+                ):
+                    self.vector_store.upsert(restored.memory_id, restored.text)

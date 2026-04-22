@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import pytest
@@ -21,6 +22,7 @@ from cellin.core import (
 from cellin.dreaming.strategies import (
     AbstractionDreamStrategy,
     ContradictionRepairDreamStrategy,
+    DecayArchivalDreamStrategy,
     DeduplicationDreamStrategy,
     _group_active_memories_by_topic,
     _MutationOutcome,
@@ -66,6 +68,21 @@ class InMemoryMemoryStore(MemoryStore):
 
     def list(self) -> tuple[MemoryAtom, ...]:
         return tuple(self._memories.values())
+
+    def list_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> Sequence[MemoryAtom]:
+        result: list[MemoryAtom] = []
+        for memory in self._memories.values():
+            if archived is not None and memory.decay.archived != archived:
+                continue
+            if topic is not None and memory.metadata.get("topic") != topic:
+                continue
+            result.append(memory)
+        return result
 
 
 class InMemoryGraphStore(GraphStore):
@@ -311,4 +328,59 @@ def test_abstraction_returns_none_when_topics_do_not_qualify() -> None:
 
     result = AbstractionDreamStrategy().execute(graph_store, memory_store, at=now)
 
+    assert result is None
+
+
+def test_decay_archival_strategy_archives_expired_memories() -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    from datetime import timedelta
+
+    old_date = now - timedelta(days=20)
+    fresh_date = now - timedelta(days=5)
+
+    expired = _memory("expired", "Old memory", topic="atlas", observed_at=old_date)
+    fresh = _memory("fresh", "Fresh memory", topic="atlas", observed_at=fresh_date)
+    no_half_life = MemoryAtom(
+        memory_id="no-half-life",
+        kind=MemoryKind.ATOM,
+        text="No decay configured",
+        provenance=Provenance(source_id="no-half-life", source_type="fixture"),
+        modality=Modality.TEXT,
+        created_at=old_date,
+        observed_at=old_date,
+        decay=DecayState(half_life_days=None),
+        retrieval=RetrievalStats(),
+        metadata={"topic": "atlas"},
+    )
+
+    memory_store = InMemoryMemoryStore((expired, fresh, no_half_life))
+    graph_store = InMemoryGraphStore((expired, fresh, no_half_life))
+    strategy = DecayArchivalDreamStrategy()
+
+    result = strategy.execute(graph_store, memory_store, at=now)
+
+    assert result is not None
+    assert result.artifact.strategy_name == "decay_archival"
+    assert "expired" in result.artifact.affected_memory_ids
+    assert "fresh" not in result.artifact.affected_memory_ids
+    assert "no-half-life" not in result.artifact.affected_memory_ids
+
+    archived_memory = memory_store.get("expired")
+    assert archived_memory is not None
+    assert archived_memory.decay.archived is True
+
+    fresh_memory = memory_store.get("fresh")
+    assert fresh_memory is not None
+    assert fresh_memory.decay.archived is False
+
+
+def test_decay_archival_strategy_returns_none_when_no_candidates() -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    from datetime import timedelta
+
+    fresh = _memory("fresh", "Fresh memory", topic="atlas", observed_at=now - timedelta(days=2))
+    memory_store = InMemoryMemoryStore((fresh,))
+    graph_store = InMemoryGraphStore((fresh,))
+
+    result = DecayArchivalDreamStrategy().execute(graph_store, memory_store, at=now)
     assert result is None

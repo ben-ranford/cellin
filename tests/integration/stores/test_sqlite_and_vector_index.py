@@ -358,3 +358,71 @@ def test_in_memory_vector_index_respects_search_limit_zero() -> None:
 def test_cosine_similarity_returns_zero_for_empty_vectors() -> None:
     assert math.isclose(cosine_similarity((), ()), 0.0, abs_tol=1e-12)
     assert math.isclose(cosine_similarity((), (1.0, 0.0)), 0.0, abs_tol=1e-12)
+
+
+def test_in_memory_vector_index_delete_removes_entry() -> None:
+    index = InMemoryVectorIndex()
+    index.upsert("m1", "atlas architecture")
+    index.upsert("m2", "memory graph")
+
+    results_before = index.search("atlas", limit=5)
+    assert any(r.memory_id == "m1" for r in results_before)
+
+    index.delete("m1")
+    results_after = index.search("atlas", limit=5)
+    assert not any(r.memory_id == "m1" for r in results_after)
+
+    # delete of non-existent id is a no-op
+    index.delete("non-existent")
+
+
+def test_sqlite_vec_store_delete_removes_entry(tmp_path: Path) -> None:
+    database_path = tmp_path / "vector.sqlite"
+    store = SQLiteVecStore(str(database_path))
+    store.upsert("m1", "atlas architecture")
+    store.upsert("m2", "memory graph")
+
+    store.delete("m1")
+    results = store.search("atlas", limit=5)
+    assert not any(r.memory_id == "m1" for r in results)
+
+    # delete of non-existent id is a no-op
+    store.delete("non-existent")
+
+
+def test_sqlite_memory_store_list_by_filters_archived_and_topic(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    store = SQLiteMemoryStore(str(tmp_path / "list_by_test.sqlite"))
+
+    active_atlas = replace(
+        _memory("active-atlas", "atlas memory"),
+        decay=DecayState(archived=False, half_life_days=14.0),
+        metadata={"topic": "atlas"},
+    )
+    archived_atlas = replace(
+        _memory("archived-atlas", "old atlas memory"),
+        decay=DecayState(archived=True, half_life_days=14.0),
+        metadata={"topic": "atlas"},
+    )
+    active_beta = replace(
+        _memory("active-beta", "beta memory"),
+        decay=DecayState(archived=False, half_life_days=14.0),
+        metadata={"topic": "beta"},
+    )
+    store.put_many((active_atlas, archived_atlas, active_beta))
+
+    active_only = store.list_by(archived=False)
+    assert {m.memory_id for m in active_only} == {"active-atlas", "active-beta"}
+
+    archived_only = store.list_by(archived=True)
+    assert {m.memory_id for m in archived_only} == {"archived-atlas"}
+
+    atlas_only = store.list_by(topic="atlas")
+    assert {m.memory_id for m in atlas_only} == {"active-atlas", "archived-atlas"}
+
+    active_atlas_only = store.list_by(archived=False, topic="atlas")
+    assert {m.memory_id for m in active_atlas_only} == {"active-atlas"}
+
+    all_memories = store.list_by()
+    assert len(all_memories) == 3

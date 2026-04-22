@@ -81,6 +81,21 @@ class _InMemoryMemoryStore(MemoryStore):
     def list(self) -> tuple[MemoryAtom, ...]:
         return tuple(self._memories.values())
 
+    def list_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> Sequence[MemoryAtom]:
+        result: list[MemoryAtom] = []
+        for memory in self._memories.values():
+            if archived is not None and memory.decay.archived != archived:
+                continue
+            if topic is not None and memory.metadata.get("topic") != topic:
+                continue
+            result.append(memory)
+        return result
+
 
 class _InMemoryGraphStore(GraphStore):
     def __init__(

@@ -100,3 +100,11 @@ class PGVectorStore:
             matches.append(VectorMatch(memory_id=memory_id, score=round(max(score, 0.0), 6)))
 
         return tuple(matches)
+
+    def delete(self, memory_id: str) -> None:
+        """Remove an indexed vector for a memory id if present."""
+        with self._connect() as connection:
+            connection.execute(
+                f"DELETE FROM {self._table_name} WHERE memory_id = %s",
+                (memory_id,),
+            )

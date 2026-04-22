@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from urllib.parse import urlparse
 
 from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
@@ -119,6 +120,22 @@ class RedisMemoryStore:
 
     def list(self) -> tuple[MemoryAtom, ...]:
         return self._backend.list_memories()
+
+    def list_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> Sequence[MemoryAtom]:
+        """Return memories filtered by archived state and/or topic."""
+        result: list[MemoryAtom] = []
+        for memory in self._backend.list_memories():
+            if archived is not None and memory.decay.archived != archived:
+                continue
+            if topic is not None and memory.metadata.get("topic") != topic:
+                continue
+            result.append(memory)
+        return result
 
 
 class RedisGraphStore:

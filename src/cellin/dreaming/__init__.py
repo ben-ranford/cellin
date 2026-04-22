@@ -12,12 +12,14 @@ from cellin.dreaming.service import DreamRunner
 from cellin.dreaming.strategies import (
     AbstractionDreamStrategy,
     ContradictionRepairDreamStrategy,
+    DecayArchivalDreamStrategy,
     DeduplicationDreamStrategy,
 )
 
 __all__ = [
     "AbstractionDreamStrategy",
     "ContradictionRepairDreamStrategy",
+    "DecayArchivalDreamStrategy",
     "DeduplicationDreamStrategy",
     "DeterministicDreamScheduler",
     "DreamBenchmarkCase",

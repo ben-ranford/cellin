@@ -28,6 +28,22 @@ class InMemoryMemoryStore:
     def list(self) -> tuple[MemoryAtom, ...]:
         return tuple(self._memories.values())
 
+    def list_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> Sequence[MemoryAtom]:
+        """Return memories filtered by archived state and/or topic."""
+        result: list[MemoryAtom] = []
+        for memory in self._memories.values():
+            if archived is not None and memory.decay.archived != archived:
+                continue
+            if topic is not None and memory.metadata.get("topic") != topic:
+                continue
+            result.append(memory)
+        return result
+
 
 class InMemoryGraphStore:
     """In-memory graph store used by default CLI and eval runtime presets."""
