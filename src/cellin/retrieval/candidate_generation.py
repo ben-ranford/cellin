@@ -2,21 +2,15 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, replace
 
 from cellin.core import GraphStore, MemoryAtom, MemoryEdge, MemoryStore, VectorStore
-
-TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def _tokenize(text: str) -> set[str]:
-    return set(TOKEN_RE.findall(text.lower()))
+from cellin.stores.vector_utils import _tokenize
 
 
 def _lexical_seed_score(query: str, memory: MemoryAtom) -> float:
-    query_tokens = _tokenize(query)
-    memory_tokens = _tokenize(memory.text)
+    query_tokens = set(_tokenize(query))
+    memory_tokens = set(_tokenize(memory.text))
     if not query_tokens or not memory_tokens:
         return 0.0
 

@@ -120,11 +120,13 @@ def test_deduplication_skips_single_member_topics_and_archived_duplicates() -> N
     graph_store = InMemoryGraphStore(())
     outcome = _MutationOutcome.empty()
 
+    solo = _memory("solo", "Atlas note", topic="atlas", observed_at=now)
     strategy._merge_topic_members(
-        members=[_memory("solo", "Atlas note", topic="atlas", observed_at=now)],
+        members=[solo],
         at=now,
         graph_store=graph_store,
         memory_store=memory_store,
+        memory_index={solo.memory_id: solo},
         outcome=outcome,
     )
 
@@ -143,6 +145,7 @@ def test_deduplication_skips_single_member_topics_and_archived_duplicates() -> N
         at=now,
         graph_store=graph_store,
         memory_store=memory_store,
+        memory_index={canonical.memory_id: canonical, duplicate.memory_id: duplicate},
         outcome=outcome,
     )
 
@@ -177,6 +180,11 @@ def test_deduplication_skips_members_archived_earlier_in_same_run() -> None:
         at=now,
         graph_store=graph_store,
         memory_store=memory_store,
+        memory_index={
+            canonical.memory_id: canonical,
+            duplicate.memory_id: duplicate,
+            newer.memory_id: newer,
+        },
         outcome=outcome,
     )
 
