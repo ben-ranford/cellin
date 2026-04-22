@@ -64,7 +64,7 @@ def test_cli_end_to_end_flow(tmp_path: Path, capsys: CaptureFixture[str]) -> Non
     assert "memory_id=" in retrieve_output
     assert "factors=[" in retrieve_output
 
-    assert main(["dream", "--config", str(config_path), "--strategy", "abstraction"]) == 0
+    assert main(["dream", "run", "--config", str(config_path), "--strategy", "abstraction"]) == 0
     dream_output = capsys.readouterr().out
     assert "strategy=abstraction" in dream_output
 

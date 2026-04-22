@@ -39,7 +39,7 @@ def test_cli_handles_no_pending_dreams_and_missing_trace_file(
     assert main(["init", "--workspace", str(workspace)]) == 0
     capsys.readouterr()
 
-    assert main(["dream", "--config", str(config_path)]) == 0
+    assert main(["dream", "run", "--config", str(config_path)]) == 0
     assert capsys.readouterr().out.strip() == "no dream runs executed"
 
     assert main(["trace", "inspect", "--config", str(config_path), "--limit", "1"]) == 0
