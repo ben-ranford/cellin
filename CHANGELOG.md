@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0](https://github.com/ben-ranford/cellin/compare/v0.3.0...v0.4.0) (2026-04-22)
+
+
+### Features
+
+* **cli:** eval backend parameterisation and DreamDiff inspect/rollback CLI ([#165](https://github.com/ben-ranford/cellin/issues/165) [#167](https://github.com/ben-ranford/cellin/issues/167)) ([#183](https://github.com/ben-ranford/cellin/issues/183)) ([219761a](https://github.com/ben-ranford/cellin/commit/219761a39a09285d4943564b4e8dabd00a9e1de2))
+* **dreaming:** list_by, half_life decay archival, VectorStore.delete ([#162](https://github.com/ben-ranford/cellin/issues/162) [#163](https://github.com/ben-ranford/cellin/issues/163) [#164](https://github.com/ben-ranford/cellin/issues/164)) ([#188](https://github.com/ben-ranford/cellin/issues/188)) ([d29cc0c](https://github.com/ben-ranford/cellin/commit/d29cc0cb79733b337a8d7d10677548a9bbe5ec05))
+* **ingest:** audio/video adapters, UnsupportedModalityError, CAUSED_BY/DERIVED_FROM edges ([#166](https://github.com/ben-ranford/cellin/issues/166) [#169](https://github.com/ben-ranford/cellin/issues/169)) ([#181](https://github.com/ben-ranford/cellin/issues/181)) ([1daefcd](https://github.com/ben-ranford/cellin/commit/1daefcdfb9c5785f075d3e01c674b5c2692b4588))
+* **retrieval:** access_count writeback, wire representation_store, add ranker/retriever plugins ([#160](https://github.com/ben-ranford/cellin/issues/160) [#161](https://github.com/ben-ranford/cellin/issues/161) [#168](https://github.com/ben-ranford/cellin/issues/168)) ([#182](https://github.com/ben-ranford/cellin/issues/182)) ([38d10fb](https://github.com/ben-ranford/cellin/commit/38d10fb9373bf4ded3ea81bc2de2b3998c6b7c9f))
+* **stores:** add edge-by-src/tgt index to Redis backend — O(degree) neighbors() ([#151](https://github.com/ben-ranford/cellin/issues/151)) ([#178](https://github.com/ben-ranford/cellin/issues/178)) ([a3b1035](https://github.com/ben-ranford/cellin/commit/a3b1035eb301725c544499fb7db2b3bc2aabf59d))
+
+
+### Bug Fixes
+
+* **dreaming:** contradiction stale ref, dedup N+1, tokenize dedup, graph write-amplification ([#172](https://github.com/ben-ranford/cellin/issues/172)) ([92ddac0](https://github.com/ben-ranford/cellin/commit/92ddac02b2fdb9b17ba1780ba5654d837a05b392))
+* **ranking:** normalise WeightProfile factor weights ([#148](https://github.com/ben-ranford/cellin/issues/148)) ([#170](https://github.com/ben-ranford/cellin/issues/170)) ([6379db5](https://github.com/ben-ranford/cellin/commit/6379db5cc27cff0b034b8c9b6fab1712a9e3729a))
+
+
+### Refactors
+
+* **runtime:** replace 25 _build_* functions with table-driven backend registry ([#159](https://github.com/ben-ranford/cellin/issues/159)) ([#180](https://github.com/ben-ranford/cellin/issues/180)) ([b035a3f](https://github.com/ben-ranford/cellin/commit/b035a3f99cffadd12be186b359993847675752b0))
+* **stores:** collapse Neo4j/Memgraph facades into shared wrapper ([#158](https://github.com/ben-ranford/cellin/issues/158)) ([#177](https://github.com/ben-ranford/cellin/issues/177)) ([609f4a8](https://github.com/ben-ranford/cellin/commit/609f4a8a426d27928b62973e5247ece59a5938e5))
+* **stores:** extract _RemoteVectorBackendBase — eliminate 6 copy-pasted patterns ([#157](https://github.com/ben-ranford/cellin/issues/157)) ([#179](https://github.com/ben-ranford/cellin/issues/179)) ([6029175](https://github.com/ben-ranford/cellin/commit/60291757f2fefd82dc7252cbd7b45600fe73eae0))
+
 ## [0.3.0](https://github.com/ben-ranford/cellin/compare/v0.2.0...v0.3.0) (2026-04-08)
 
 
