@@ -260,7 +260,8 @@ class DeduplicationDreamStrategy:
             duplicate=duplicate,
             at=at,
         )
-        edge_after = self._same_as_edge(duplicate=duplicate, canonical=canonical, at=at)
+        same_as = self._same_as_edge(duplicate=duplicate, canonical=canonical, at=at)
+        derived_from = self._derived_from_edge(canonical=canonical, duplicate=duplicate, at=at)
         changes = _apply_memory_updates(
             graph_store=graph_store,
             memory_store=memory_store,
@@ -269,9 +270,11 @@ class DeduplicationDreamStrategy:
         for change in changes:
             if change.after is not None:
                 memory_index[change.memory_id] = change.after
-        graph_store.upsert_edge(edge_after)
+        graph_store.upsert_edge(same_as)
+        graph_store.upsert_edge(derived_from)
         outcome.memory_changes.extend(changes)
-        outcome.edge_changes.append(DreamEdgeChange(edge_after.edge_id, None, edge_after))
+        outcome.edge_changes.append(DreamEdgeChange(same_as.edge_id, None, same_as))
+        outcome.edge_changes.append(DreamEdgeChange(derived_from.edge_id, None, derived_from))
 
     def _is_merge_candidate(self, *, left: MemoryAtom, right: MemoryAtom) -> bool:
         if _contains_conflict(left, right):
@@ -336,6 +339,23 @@ class DeduplicationDreamStrategy:
             source_id=duplicate.memory_id,
             target_id=canonical.memory_id,
             kind=EdgeKind.SAME_AS,
+            provenance=Provenance(source_id=self.strategy_name, source_type="dream"),
+            created_at=at,
+            metadata={"dream_run": self.strategy_name},
+        )
+
+    def _derived_from_edge(
+        self,
+        *,
+        canonical: MemoryAtom,
+        duplicate: MemoryAtom,
+        at: datetime,
+    ) -> MemoryEdge:
+        return MemoryEdge(
+            edge_id=f"derived-from:{canonical.memory_id}:{duplicate.memory_id}",
+            source_id=canonical.memory_id,
+            target_id=duplicate.memory_id,
+            kind=EdgeKind.DERIVED_FROM,
             provenance=Provenance(source_id=self.strategy_name, source_type="dream"),
             created_at=at,
             metadata={"dream_run": self.strategy_name},

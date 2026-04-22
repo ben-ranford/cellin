@@ -12,6 +12,14 @@ from cellin.core.models import JSONValue
 from cellin.ingest.envelope import ArtifactEnvelope
 
 
+class UnsupportedModalityError(Exception):
+    """Raised when no adapter is registered for the requested modality."""
+
+    def __init__(self, modality: Modality) -> None:
+        super().__init__(f"No adapter registered for modality: {modality!r}")
+        self.modality = modality
+
+
 def _artifact(
     envelope: ArtifactEnvelope,
     *,
@@ -148,6 +156,48 @@ class ImageAdapter:
         )
 
 
+@dataclass(slots=True)
+class AudioAdapter:
+    """Normalizes audio payloads via a caller-supplied transcript provider."""
+
+    transcript_provider: Callable[[bytes], str] | None = None
+
+    def supports(self, modality: Modality) -> bool:
+        return modality is Modality.AUDIO
+
+    def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
+        payload = envelope.payload
+        if not isinstance(payload, dict):
+            raise TypeError(f"AudioAdapter expected payload of type {dict}, got {type(payload)!r}")
+        if self.transcript_provider is None:
+            raise NotImplementedError("Provide a transcript_provider to AudioAdapter")
+        raw = payload.get("data")
+        data: bytes = raw if isinstance(raw, bytes) else b""
+        content = self.transcript_provider(data)
+        return _artifact(envelope, content=content)
+
+
+@dataclass(slots=True)
+class VideoAdapter:
+    """Normalizes video payloads via a caller-supplied caption provider."""
+
+    caption_provider: Callable[[bytes], str] | None = None
+
+    def supports(self, modality: Modality) -> bool:
+        return modality is Modality.VIDEO
+
+    def normalize(self, envelope: ArtifactEnvelope) -> Artifact:
+        payload = envelope.payload
+        if not isinstance(payload, dict):
+            raise TypeError(f"VideoAdapter expected payload of type {dict}, got {type(payload)!r}")
+        if self.caption_provider is None:
+            raise NotImplementedError("Provide a caption_provider to VideoAdapter")
+        raw = payload.get("data")
+        data: bytes = raw if isinstance(raw, bytes) else b""
+        content = self.caption_provider(data)
+        return _artifact(envelope, content=content)
+
+
 class EnvelopeAdapter(Protocol):
     """A modality adapter that accepts the canonical artifact envelope."""
 
@@ -170,4 +220,6 @@ def built_in_adapters(
         ChatAdapter(),
         JSONAdapter(),
         ImageAdapter(text_provider=image_text_provider),
+        AudioAdapter(),
+        VideoAdapter(),
     )
