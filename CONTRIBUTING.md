@@ -75,7 +75,7 @@ python3 -m uv run lefthook run pre-commit
 - Stable releases are initiated by `release-please` from merged conventional commits on `main`.
 - Pushes to `main` automatically publish `.devN` preview builds from the next inferred stable version.
 - Release PRs carry the version bump, changelog update, and tag metadata for the next stable cut.
-- Release PR summaries are grouped from parsed Conventional Commit types such as `feat`, `fix`, `docs`, `refactor`, and `perf`. Issue labels like `bug`, `retrieval`, or `release-candidate` do not drive those sections.
+- Release PR summaries are grouped from parsed Conventional Commit types: `feat` (Features), `fix` (Bug Fixes), `perf` (Performance Improvements), `refactor` (Refactors), `docs` (Documentation), and `revert` (Reverts). Issue labels like `bug`, `retrieval`, or `release-candidate` do not drive those sections. `chore`, `test`, and `style` commits do not appear in the changelog and do not affect the version.
 - Preview versions use PEP 440 development syntax such as `0.2.1.dev123456701`.
 - Release-candidate versions use PEP 440 syntax such as `0.2.1rc1`.
 - Manual release candidates are created through the GitHub Actions `rolling-release` workflow.
