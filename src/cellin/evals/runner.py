@@ -12,7 +12,6 @@ from tempfile import TemporaryDirectory
 from cellin.core import (
     EdgeKind,
     GraphStore,
-    MemoryAtom,
     MemoryEdge,
     MemoryStore,
     Provenance,
@@ -34,6 +33,8 @@ from cellin.ingest import CanonicalIngestor
 from cellin.ranking import WeightedRanker, get_weight_profile
 from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
 from cellin.runtime.storage import StorageConfig, build_storage_bundle
+from cellin.stores import InMemoryGraphStore as _InMemoryGraphStore
+from cellin.stores import InMemoryMemoryStore as _InMemoryMemoryStore
 
 
 def _json_float_map(values: dict[str, float]) -> dict[str, JSONValue]:
@@ -66,51 +67,6 @@ def _top_memory_id(memories: Sequence[ScoredMemory]) -> str | None:
 
 def _top_bundle_score(memories: Sequence[ScoredMemory]) -> float:
     return memories[0].score if memories else 0.0
-
-
-class _InMemoryMemoryStore(MemoryStore):
-    def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-
-    def put(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return tuple(self._memories.values())
-
-
-class _InMemoryGraphStore(GraphStore):
-    def __init__(
-        self,
-        memories: tuple[MemoryAtom, ...],
-        edges: tuple[MemoryEdge, ...] = (),
-    ) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-        self._edges = {edge.edge_id: edge for edge in edges}
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._edges[edge.edge_id] = edge
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return tuple(
-            edge
-            for edge in self.list_edges()
-            if edge.source_id == memory_id or edge.target_id == memory_id
-        )
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return tuple(
-            edge for edge in self._edges.values() if edge.metadata.get("archived") is not True
-        )
 
 
 @dataclass(frozen=True, slots=True)

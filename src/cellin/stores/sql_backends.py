@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
-from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
+from cellin.core import MemoryAtom, MemoryEdge
 from cellin.stores._graph_serialization import (
     dump_edge,
     dump_memory,
@@ -16,6 +16,7 @@ from cellin.stores._graph_serialization import (
     load_edge,
     load_memory,
 )
+from cellin.stores._store_utils import _DelegatingGraphStore, _DelegatingMemoryStore
 
 
 class _MissingDuckDBDependencyError(RuntimeError):
@@ -200,6 +201,9 @@ class _RelationalBackend:
                 edge := load_edge(row[0]),
             )
         )
+
+    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
+        return self.get_neighbors(memory_id)
 
     def list_edges(self) -> tuple[MemoryEdge, ...]:
         rows = self._fetch_all(self._EDGES_LIST_SQL)
@@ -398,7 +402,7 @@ ON DUPLICATE KEY UPDATE payload = VALUES(payload)
 """
 
 
-class DuckDBMemoryStore:
+class DuckDBMemoryStore(_DelegatingMemoryStore):
     """Relational memory store backed by DuckDB."""
 
     def __init__(self, database_path: str) -> None:
@@ -412,20 +416,8 @@ class DuckDBMemoryStore:
             upsert_edge_sql=_DUCKDB_EDGE_UPSERT_SQL,
         )
 
-    def put(self, memory: MemoryAtom) -> None:
-        self.put_many((memory,))
 
-    def put_many(self, memories: Sequence[MemoryAtom]) -> None:
-        self._backend.put_memories(memories)
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return self._backend.list_memories()
-
-
-class DuckDBGraphStore:
+class DuckDBGraphStore(_DelegatingGraphStore):
     """Relational graph store backed by DuckDB."""
 
     def __init__(self, database_path: str) -> None:
@@ -439,34 +431,8 @@ class DuckDBGraphStore:
             upsert_edge_sql=_DUCKDB_EDGE_UPSERT_SQL,
         )
 
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._backend.put_memories((memory,))
 
-    def upsert_memories(self, memories: Sequence[MemoryAtom]) -> None:
-        self._backend.put_memories(memories)
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._backend.upsert_edges((edge,))
-
-    def upsert_edges(self, edges: Sequence[MemoryEdge]) -> None:
-        self._backend.upsert_edges(edges)
-
-    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
-        return (
-            isinstance(memory_store, DuckDBMemoryStore) and memory_store._backend is self._backend
-        )
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return self._backend.get_neighbors(memory_id)
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return self._backend.list_edges()
-
-
-class PostgreSQLMemoryStore:
+class PostgreSQLMemoryStore(_DelegatingMemoryStore):
     """Relational memory store backed by PostgreSQL."""
 
     def __init__(self, connection_string: str) -> None:
@@ -480,20 +446,8 @@ class PostgreSQLMemoryStore:
             upsert_edge_sql=_POSTGRES_EDGE_UPSERT_SQL,
         )
 
-    def put(self, memory: MemoryAtom) -> None:
-        self.put_many((memory,))
 
-    def put_many(self, memories: Sequence[MemoryAtom]) -> None:
-        self._backend.put_memories(memories)
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return self._backend.list_memories()
-
-
-class PostgreSQLGraphStore:
+class PostgreSQLGraphStore(_DelegatingGraphStore):
     """Relational graph store backed by PostgreSQL."""
 
     def __init__(self, connection_string: str) -> None:
@@ -507,35 +461,8 @@ class PostgreSQLGraphStore:
             upsert_edge_sql=_POSTGRES_EDGE_UPSERT_SQL,
         )
 
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._backend.put_memories((memory,))
 
-    def upsert_memories(self, memories: Sequence[MemoryAtom]) -> None:
-        self._backend.put_memories(memories)
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._backend.upsert_edges((edge,))
-
-    def upsert_edges(self, edges: Sequence[MemoryEdge]) -> None:
-        self._backend.upsert_edges(edges)
-
-    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
-        return (
-            isinstance(memory_store, PostgreSQLMemoryStore)
-            and memory_store._backend is self._backend
-        )
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return self._backend.get_neighbors(memory_id)
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return self._backend.list_edges()
-
-
-class MySQLMemoryStore:
+class MySQLMemoryStore(_DelegatingMemoryStore):
     """Relational memory store backed by MySQL."""
 
     def __init__(self, connection_string: str) -> None:
@@ -549,20 +476,8 @@ class MySQLMemoryStore:
             upsert_edge_sql=_MYSQL_EDGE_UPSERT_SQL,
         )
 
-    def put(self, memory: MemoryAtom) -> None:
-        self.put_many((memory,))
 
-    def put_many(self, memories: Sequence[MemoryAtom]) -> None:
-        self._backend.put_memories(memories)
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return self._backend.list_memories()
-
-
-class MySQLGraphStore:
+class MySQLGraphStore(_DelegatingGraphStore):
     """Relational graph store backed by MySQL."""
 
     def __init__(self, connection_string: str) -> None:
@@ -575,30 +490,6 @@ class MySQLGraphStore:
             upsert_memory_sql=_MYSQL_MEMORY_UPSERT_SQL,
             upsert_edge_sql=_MYSQL_EDGE_UPSERT_SQL,
         )
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._backend.put_memories((memory,))
-
-    def upsert_memories(self, memories: Sequence[MemoryAtom]) -> None:
-        self._backend.put_memories(memories)
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._backend.upsert_edges((edge,))
-
-    def upsert_edges(self, edges: Sequence[MemoryEdge]) -> None:
-        self._backend.upsert_edges(edges)
-
-    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
-        return isinstance(memory_store, MySQLMemoryStore) and memory_store._backend is self._backend
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return self._backend.get_neighbors(memory_id)
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return self._backend.list_edges()
 
 
 __all__ = [

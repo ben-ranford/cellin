@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
 from cellin.stores._graph_serialization import edge_is_archived
+from cellin.stores._store_utils import filter_memories
 
 
 class InMemoryMemoryStore:
@@ -27,6 +28,14 @@ class InMemoryMemoryStore:
 
     def list(self) -> tuple[MemoryAtom, ...]:
         return tuple(self._memories.values())
+
+    def list_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> Sequence[MemoryAtom]:
+        return filter_memories(self._memories.values(), archived=archived, topic=topic)
 
 
 class InMemoryGraphStore:

@@ -87,6 +87,13 @@ class _VectorBackend:
                 (memory_id, json.dumps(vector)),
             )
 
+    def delete(self, memory_id: str) -> None:
+        with self._connected(writable=True) as connection:
+            connection.execute(
+                "DELETE FROM vector_entries WHERE memory_id = ?",
+                (memory_id,),
+            )
+
 
 class SQLiteVecStore:
     """SQLite-backed vector storage and top-k cosine search."""
@@ -113,3 +120,7 @@ class SQLiteVecStore:
 
         ordered = sorted(results, key=lambda result: (-result.score, result.memory_id))
         return tuple(ordered)
+
+    def delete(self, memory_id: str) -> None:
+        """Remove an indexed vector for a memory id if present."""
+        self._backend.delete(memory_id)

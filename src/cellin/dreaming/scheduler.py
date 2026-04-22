@@ -20,9 +20,7 @@ class DeterministicDreamScheduler:
     last_run_at: dict[str, datetime] = field(default_factory=dict)
 
     def plan(self, now: datetime) -> tuple[ScheduledDreamRun, ...]:
-        active_memories = tuple(
-            memory for memory in self.memory_store.list() if not memory.decay.archived
-        )
+        active_memories = tuple(self.memory_store.list_by(archived=False))
         active_edges = self.graph_store.list_edges()
         runs: list[ScheduledDreamRun] = []
 
@@ -57,6 +55,21 @@ class DeterministicDreamScheduler:
                     strategy_name="abstraction",
                     scheduled_for=now,
                     reason=f"summarizable-topics:{summarizable_topics}",
+                )
+            )
+
+        decay_candidates = [
+            memory
+            for memory in active_memories
+            if memory.decay.half_life_days is not None
+            and (now - (memory.observed_at or memory.created_at)).days > memory.decay.half_life_days
+        ]
+        if decay_candidates and self._due("decay_archival", now):
+            runs.append(
+                ScheduledDreamRun(
+                    strategy_name="decay_archival",
+                    scheduled_for=now,
+                    reason=f"decay-candidates:{len(decay_candidates)}",
                 )
             )
 

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 from urllib.parse import urlparse
 
-from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
+from cellin.core import MemoryAtom, MemoryEdge
 from cellin.stores._graph_serialization import (
     edge_is_archived,
     edge_payload,
@@ -14,6 +14,7 @@ from cellin.stores._graph_serialization import (
     load_memory_payload,
     memory_payload,
 )
+from cellin.stores._store_utils import _DelegatingGraphStore, _DelegatingMemoryStore
 
 
 class _MissingMongoDependencyError(RuntimeError):
@@ -68,7 +69,7 @@ class _MongoBackend:
         self._memory_collection = database["cellin_memories"]
         self._edge_collection = database["cellin_edges"]
 
-    def put_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
+    def put_memories(self, memories: Sequence[MemoryAtom]) -> None:
         if not memories:
             return
 
@@ -93,7 +94,7 @@ class _MongoBackend:
             for document in _sorted_documents(self._memory_collection.find())
         )
 
-    def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
+    def upsert_edges(self, edges: Sequence[MemoryEdge]) -> None:
         if not edges:
             return
 
@@ -135,26 +136,14 @@ def _backend_for(connection_string: str) -> _MongoBackend:
     return backend
 
 
-class MongoDBMemoryStore:
+class MongoDBMemoryStore(_DelegatingMemoryStore):
     """Persist memory atoms as MongoDB documents keyed by `memory_id`."""
 
     def __init__(self, connection_string: str, *, _backend: _MongoBackend | None = None) -> None:
         self._backend = _backend or _backend_for(connection_string)
 
-    def put(self, memory: MemoryAtom) -> None:
-        self.put_many((memory,))
 
-    def put_many(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._backend.put_memories(memories)
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return self._backend.list_memories()
-
-
-class MongoDBGraphStore:
+class MongoDBGraphStore(_DelegatingGraphStore):
     """Persist graph edges and supporting memory records in MongoDB."""
 
     def __init__(
@@ -164,29 +153,3 @@ class MongoDBGraphStore:
         _backend: _MongoBackend | None = None,
     ) -> None:
         self._backend = _backend or _backend_for(connection_string)
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._backend.put_memories((memory,))
-
-    def upsert_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._backend.put_memories(memories)
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self.upsert_edges((edge,))
-
-    def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
-        self._backend.upsert_edges(edges)
-
-    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
-        return (
-            isinstance(memory_store, MongoDBMemoryStore) and memory_store._backend is self._backend
-        )
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return self._backend.neighbors(memory_id)
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return self._backend.list_edges()

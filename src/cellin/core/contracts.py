@@ -127,6 +127,15 @@ class MemoryStore(Protocol):
     def list(self) -> Sequence[MemoryAtom]:
         """List all stored memories."""
 
+    def list_by(
+        self,
+        *,
+        archived: bool | None = None,
+        topic: str | None = None,
+    ) -> Sequence[MemoryAtom]:
+        """Return memories filtered by archived state and/or topic."""
+        ...
+
 
 class Ingestor(Protocol):
     """Transforms artifacts into memory atoms and graph edges."""
@@ -235,3 +244,7 @@ class VectorStore(Protocol):
 
     def search(self, query: str, *, limit: int = 5) -> Sequence[VectorMatch]:
         """Return matching memory ids and scores."""
+
+    def delete(self, memory_id: str) -> None:
+        """Remove an indexed vector for a memory id."""
+        ...

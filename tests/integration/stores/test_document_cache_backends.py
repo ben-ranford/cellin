@@ -4,51 +4,17 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from datetime import UTC, datetime
 from types import ModuleType
 
 import pytest
+from tests.integration.stores._helpers import assert_list_by_filtering, make_edge, make_memory
 
-from cellin.core import (
-    DecayState,
-    EdgeKind,
-    MemoryAtom,
-    MemoryEdge,
-    MemoryKind,
-    Modality,
-    Provenance,
-    RetrievalStats,
-)
 from cellin.stores import MongoDBGraphStore, MongoDBMemoryStore, RedisGraphStore, RedisMemoryStore
 from cellin.stores import mongodb as mongodb_stores
 from cellin.stores import redis as redis_stores
 
-
-def _memory(memory_id: str, text: str) -> MemoryAtom:
-    now = datetime(2026, 4, 5, tzinfo=UTC)
-    return MemoryAtom(
-        memory_id=memory_id,
-        kind=MemoryKind.ATOM,
-        text=text,
-        provenance=Provenance(source_id=memory_id, source_type="fixture"),
-        modality=Modality.TEXT,
-        created_at=now,
-        observed_at=now,
-        decay=DecayState(half_life_days=14.0),
-        retrieval=RetrievalStats(),
-    )
-
-
-def _edge(edge_id: str, source_id: str, target_id: str, *, archived: bool) -> MemoryEdge:
-    return MemoryEdge(
-        edge_id=edge_id,
-        source_id=source_id,
-        target_id=target_id,
-        kind=EdgeKind.SUPPORTS,
-        provenance=Provenance(source_id=edge_id, source_type="fixture"),
-        created_at=datetime(2026, 4, 5, tzinfo=UTC),
-        metadata={"archived": archived},
-    )
+_memory = make_memory
+_edge = make_edge
 
 
 class _FakeMongoCollection:
@@ -222,3 +188,32 @@ def test_document_and_cache_backends_share_memory_store_and_filter_archived_edge
     assert duplicate_graph_store.shares_memory_store(memory_store)
     assert memory_store.get("memory-1").text == "Atlas revised"
     assert duplicate_memory_store.get("memory-3") == _memory("memory-3", "Third memory")
+
+
+@pytest.mark.parametrize(
+    "memory_cls,connection_string,install_backend,clear_backends",
+    [
+        (
+            MongoDBMemoryStore,
+            "mongodb://localhost:27017/cellin_list_by",
+            _install_fake_mongodb,
+            mongodb_stores._BACKENDS.clear,
+        ),
+        (
+            RedisMemoryStore,
+            "redis://localhost:6379/1",
+            _install_fake_redis,
+            redis_stores._BACKENDS.clear,
+        ),
+    ],
+)
+def test_document_cache_memory_store_list_by_filters_archived_and_topic(
+    memory_cls: type,
+    connection_string: str,
+    install_backend: Callable[[pytest.MonkeyPatch], None],
+    clear_backends: Callable[[], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_backends()
+    install_backend(monkeypatch)
+    assert_list_by_filtering(memory_cls(connection_string))

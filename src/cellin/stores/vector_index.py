@@ -30,5 +30,9 @@ class InMemoryVectorIndex:
         ordered = sorted(results, key=lambda result: (-result.score, result.memory_id))
         return tuple(ordered[:limit])
 
+    def delete(self, memory_id: str) -> None:
+        """Remove an indexed vector for a memory id if present."""
+        self._vectors.pop(memory_id, None)
+
 
 SearchResult = VectorMatch

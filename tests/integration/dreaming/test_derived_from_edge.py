@@ -7,55 +7,17 @@ from datetime import UTC, datetime
 from cellin.core import (
     DecayState,
     EdgeKind,
-    GraphStore,
     MemoryAtom,
-    MemoryEdge,
     MemoryKind,
-    MemoryStore,
     Modality,
     Provenance,
     RetrievalStats,
 )
 from cellin.dreaming import DeduplicationDreamStrategy
+from cellin.stores import InMemoryGraphStore as _InMemoryGraphStore
+from cellin.stores import InMemoryMemoryStore as _InMemoryMemoryStore
 
 _NOW = datetime(2026, 4, 22, tzinfo=UTC)
-
-
-class _InMemoryMemoryStore(MemoryStore):
-    def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._memories = {m.memory_id: m for m in memories}
-
-    def put(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return tuple(self._memories.values())
-
-
-class _InMemoryGraphStore(GraphStore):
-    def __init__(self) -> None:
-        self._memories: dict[str, MemoryAtom] = {}
-        self._edges: dict[str, MemoryEdge] = {}
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._edges[edge.edge_id] = edge
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return tuple(
-            e for e in self._edges.values() if e.source_id == memory_id or e.target_id == memory_id
-        )
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return tuple(self._edges.values())
 
 
 def _memory(memory_id: str, text: str, *, topic: str = "test-topic") -> MemoryAtom:

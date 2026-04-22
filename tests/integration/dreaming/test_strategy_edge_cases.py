@@ -21,12 +21,14 @@ from cellin.core import (
 from cellin.dreaming.strategies import (
     AbstractionDreamStrategy,
     ContradictionRepairDreamStrategy,
+    DecayArchivalDreamStrategy,
     DeduplicationDreamStrategy,
     _group_active_memories_by_topic,
     _MutationOutcome,
     _similarity,
     _string_list,
 )
+from cellin.stores import InMemoryGraphStore, InMemoryMemoryStore
 
 
 def _memory(
@@ -52,45 +54,6 @@ def _memory(
         retrieval=RetrievalStats(),
         metadata={"topic": topic},
     )
-
-
-class InMemoryMemoryStore(MemoryStore):
-    def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-
-    def put(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return tuple(self._memories.values())
-
-
-class InMemoryGraphStore(GraphStore):
-    def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._memories = {memory.memory_id: memory for memory in memories}
-        self._edges: dict[str, MemoryEdge] = {}
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._memories[memory.memory_id] = memory
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._edges[edge.edge_id] = edge
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._memories.get(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return tuple(
-            edge
-            for edge in self._edges.values()
-            if edge.source_id == memory_id or edge.target_id == memory_id
-        )
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return tuple(self._edges.values())
 
 
 def test_strategy_helpers_handle_empty_tokens_string_lists_and_archived_grouping() -> None:
@@ -319,4 +282,59 @@ def test_abstraction_returns_none_when_topics_do_not_qualify() -> None:
 
     result = AbstractionDreamStrategy().execute(graph_store, memory_store, at=now)
 
+    assert result is None
+
+
+def test_decay_archival_strategy_archives_expired_memories() -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    from datetime import timedelta
+
+    old_date = now - timedelta(days=20)
+    fresh_date = now - timedelta(days=5)
+
+    expired = _memory("expired", "Old memory", topic="atlas", observed_at=old_date)
+    fresh = _memory("fresh", "Fresh memory", topic="atlas", observed_at=fresh_date)
+    no_half_life = MemoryAtom(
+        memory_id="no-half-life",
+        kind=MemoryKind.ATOM,
+        text="No decay configured",
+        provenance=Provenance(source_id="no-half-life", source_type="fixture"),
+        modality=Modality.TEXT,
+        created_at=old_date,
+        observed_at=old_date,
+        decay=DecayState(half_life_days=None),
+        retrieval=RetrievalStats(),
+        metadata={"topic": "atlas"},
+    )
+
+    memory_store = InMemoryMemoryStore((expired, fresh, no_half_life))
+    graph_store = InMemoryGraphStore((expired, fresh, no_half_life))
+    strategy = DecayArchivalDreamStrategy()
+
+    result = strategy.execute(graph_store, memory_store, at=now)
+
+    assert result is not None
+    assert result.artifact.strategy_name == "decay_archival"
+    assert "expired" in result.artifact.affected_memory_ids
+    assert "fresh" not in result.artifact.affected_memory_ids
+    assert "no-half-life" not in result.artifact.affected_memory_ids
+
+    archived_memory = memory_store.get("expired")
+    assert archived_memory is not None
+    assert archived_memory.decay.archived is True
+
+    fresh_memory = memory_store.get("fresh")
+    assert fresh_memory is not None
+    assert fresh_memory.decay.archived is False
+
+
+def test_decay_archival_strategy_returns_none_when_no_candidates() -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    from datetime import timedelta
+
+    fresh = _memory("fresh", "Fresh memory", topic="atlas", observed_at=now - timedelta(days=2))
+    memory_store = InMemoryMemoryStore((fresh,))
+    graph_store = InMemoryGraphStore((fresh,))
+
+    result = DecayArchivalDreamStrategy().execute(graph_store, memory_store, at=now)
     assert result is None

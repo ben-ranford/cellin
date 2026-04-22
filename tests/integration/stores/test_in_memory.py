@@ -97,3 +97,55 @@ def test_in_memory_graph_store_detects_shared_memory_store_reference() -> None:
     graph_store._memory_store = memory_store
 
     assert graph_store.shares_memory_store(memory_store) is True
+
+
+def test_in_memory_memory_store_list_by_filters_archived_and_topic() -> None:
+    active = MemoryAtom(
+        memory_id="active-1",
+        kind=MemoryKind.ATOM,
+        text="active memory",
+        provenance=Provenance(source_id="active-1", source_type="fixture"),
+        modality=Modality.TEXT,
+        created_at=datetime(2026, 4, 5, tzinfo=UTC),
+        decay=DecayState(archived=False, half_life_days=14.0),
+        retrieval=RetrievalStats(),
+        metadata={"topic": "atlas"},
+    )
+    archived = MemoryAtom(
+        memory_id="archived-1",
+        kind=MemoryKind.ATOM,
+        text="archived memory",
+        provenance=Provenance(source_id="archived-1", source_type="fixture"),
+        modality=Modality.TEXT,
+        created_at=datetime(2026, 4, 5, tzinfo=UTC),
+        decay=DecayState(archived=True, half_life_days=14.0),
+        retrieval=RetrievalStats(),
+        metadata={"topic": "atlas"},
+    )
+    other_topic = MemoryAtom(
+        memory_id="other-1",
+        kind=MemoryKind.ATOM,
+        text="other topic memory",
+        provenance=Provenance(source_id="other-1", source_type="fixture"),
+        modality=Modality.TEXT,
+        created_at=datetime(2026, 4, 5, tzinfo=UTC),
+        decay=DecayState(archived=False, half_life_days=14.0),
+        retrieval=RetrievalStats(),
+        metadata={"topic": "beta"},
+    )
+    store = InMemoryMemoryStore((active, archived, other_topic))
+
+    active_only = store.list_by(archived=False)
+    assert {m.memory_id for m in active_only} == {"active-1", "other-1"}
+
+    archived_only = store.list_by(archived=True)
+    assert {m.memory_id for m in archived_only} == {"archived-1"}
+
+    atlas_only = store.list_by(topic="atlas")
+    assert {m.memory_id for m in atlas_only} == {"active-1", "archived-1"}
+
+    active_atlas = store.list_by(archived=False, topic="atlas")
+    assert {m.memory_id for m in active_atlas} == {"active-1"}
+
+    all_memories = store.list_by()
+    assert len(all_memories) == 3

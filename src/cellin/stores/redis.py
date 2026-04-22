@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from urllib.parse import urlparse
 
-from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
+from cellin.core import MemoryAtom, MemoryEdge
 from cellin.stores._graph_serialization import (
     dump_edge,
     dump_memory,
@@ -12,6 +13,7 @@ from cellin.stores._graph_serialization import (
     load_edge,
     load_memory,
 )
+from cellin.stores._store_utils import _DelegatingGraphStore, _DelegatingMemoryStore
 
 
 class _MissingRedisDependencyError(RuntimeError):
@@ -50,7 +52,7 @@ class _RedisBackend:
     def _edge_by_tgt_key(self, memory_id: str) -> str:
         return f"{self._namespace}:edge-by-tgt:{memory_id}"
 
-    def put_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
+    def put_memories(self, memories: Sequence[MemoryAtom]) -> None:
         for memory in memories:
             self._client.set(self._memory_key(memory.memory_id), dump_memory(memory))
 
@@ -68,7 +70,7 @@ class _RedisBackend:
             if (payload := self._client.get(key)) is not None
         )
 
-    def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
+    def upsert_edges(self, edges: Sequence[MemoryEdge]) -> None:
         for edge in edges:
             self._client.set(self._edge_key(edge.edge_id), dump_edge(edge))
             self._client.sadd(self._edge_by_src_key(edge.source_id), edge.edge_id)
@@ -112,51 +114,15 @@ def _backend_for(connection_string: str) -> _RedisBackend:
     return backend
 
 
-class RedisMemoryStore:
+class RedisMemoryStore(_DelegatingMemoryStore):
     """Persist memory atoms in Redis using JSON payloads."""
 
     def __init__(self, connection_string: str, *, _backend: _RedisBackend | None = None) -> None:
         self._backend = _backend or _backend_for(connection_string)
 
-    def put(self, memory: MemoryAtom) -> None:
-        self.put_many((memory,))
 
-    def put_many(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._backend.put_memories(memories)
-
-    def get(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def list(self) -> tuple[MemoryAtom, ...]:
-        return self._backend.list_memories()
-
-
-class RedisGraphStore:
+class RedisGraphStore(_DelegatingGraphStore):
     """Persist graph edges and supporting memories in Redis."""
 
     def __init__(self, connection_string: str, *, _backend: _RedisBackend | None = None) -> None:
         self._backend = _backend or _backend_for(connection_string)
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._backend.put_memories((memory,))
-
-    def upsert_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
-        self._backend.put_memories(memories)
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self.upsert_edges((edge,))
-
-    def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
-        self._backend.upsert_edges(edges)
-
-    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
-        return isinstance(memory_store, RedisMemoryStore) and memory_store._backend is self._backend
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return self._backend.neighbors(memory_id)
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return self._backend.list_edges()

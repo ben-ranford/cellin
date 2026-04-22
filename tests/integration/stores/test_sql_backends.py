@@ -4,21 +4,11 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
 from types import ModuleType
 
 import pytest
+from tests.integration.stores._helpers import assert_list_by_filtering, make_edge, make_memory
 
-from cellin.core import (
-    DecayState,
-    EdgeKind,
-    MemoryAtom,
-    MemoryEdge,
-    MemoryKind,
-    Modality,
-    Provenance,
-    RetrievalStats,
-)
 from cellin.stores import (
     DuckDBGraphStore,
     DuckDBMemoryStore,
@@ -29,37 +19,8 @@ from cellin.stores import (
     sql_backends,
 )
 
-
-def _memory(memory_id: str, text: str) -> MemoryAtom:
-    return MemoryAtom(
-        memory_id=memory_id,
-        kind=MemoryKind.ATOM,
-        text=text,
-        provenance=Provenance(source_id=memory_id, source_type="fixture"),
-        modality=Modality.TEXT,
-        created_at=datetime(2026, 4, 5, tzinfo=UTC),
-        observed_at=datetime(2026, 4, 5, tzinfo=UTC),
-        decay=DecayState(half_life_days=14.0),
-        retrieval=RetrievalStats(),
-    )
-
-
-def _edge(
-    edge_id: str,
-    source_id: str,
-    target_id: str,
-    *,
-    archived: bool,
-) -> MemoryEdge:
-    return MemoryEdge(
-        edge_id=edge_id,
-        source_id=source_id,
-        target_id=target_id,
-        kind=EdgeKind.SUPPORTS,
-        provenance=Provenance(source_id=edge_id, source_type="fixture"),
-        created_at=datetime(2026, 4, 5, tzinfo=UTC),
-        metadata={"archived": archived},
-    )
+_memory = make_memory
+_edge = make_edge
 
 
 class _FakeSQLResult:
@@ -312,3 +273,36 @@ def test_sql_backends_share_memory_store_and_filter_archived_edges(
     )
     assert final_create_count == initial_create_count
     assert final_create_count == 2
+
+
+@pytest.mark.parametrize(
+    "label,memory_cls,backend_id,install_driver",
+    [
+        ("duckdb", DuckDBMemoryStore, "cellin.duckdb.list_by", _install_duckdb),
+        (
+            "postgresql",
+            PostgreSQLMemoryStore,
+            "postgresql://cellin/list_by_test",
+            _install_postgresql,
+        ),
+        (
+            "mysql",
+            MySQLMemoryStore,
+            "mysql://cellin:test@localhost:3306/cellin_list_by",
+            _install_mysql,
+        ),
+    ],
+)
+def test_sql_memory_store_list_by_filters_by_archived_and_topic(
+    label: str,
+    memory_cls: type,
+    backend_id: str,
+    install_driver: Callable[[pytest.MonkeyPatch, _FakeSQLEngine], None],
+    tmp_path: pytest.FixtureDef[object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sql_backends._BACKENDS.clear()
+    engine = _FakeSQLEngine()
+    install_driver(monkeypatch, engine)
+    connection_key = backend_id if label != "duckdb" else str(tmp_path / "list_by.db")
+    assert_list_by_filtering(memory_cls(connection_key))

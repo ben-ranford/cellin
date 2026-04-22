@@ -114,7 +114,9 @@ class WeightedRanker:
                     value=_recency(
                         memory,
                         now=now,
-                        half_life_days=self.profile.recency_half_life_days,
+                        half_life_days=(
+                            memory.decay.half_life_days or self.profile.recency_half_life_days
+                        ),
                     ),
                     rationale="Age-decayed freshness score.",
                 ),
