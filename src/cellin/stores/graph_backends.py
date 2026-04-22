@@ -382,31 +382,32 @@ def _arangodb_backend(connection_string: str) -> _ArangoGraphBackend:
     return backend
 
 
-class _BulkUpsertMixin(GraphStore):
-    """Mixin that provides bulk upsert loops delegating to a _backend attribute."""
+class _GraphBackend(Protocol):
+    def upsert_memory(self, memory: MemoryAtom) -> None: ...
+    def upsert_edge(self, edge: MemoryEdge) -> None: ...
+    def get_memory(self, memory_id: str) -> MemoryAtom | None: ...
+    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]: ...
+    def list_edges(self) -> tuple[MemoryEdge, ...]: ...
 
-    _backend: _CypherGraphBackend | _ArangoGraphBackend
+
+class _BackendGraphStore(GraphStore):
+    """Base GraphStore that delegates all operations to a _backend."""
+
+    _backend: _GraphBackend
+
+    def upsert_memory(self, memory: MemoryAtom) -> None:
+        self._backend.upsert_memory(memory)
 
     def upsert_memories(self, memories: tuple[MemoryAtom, ...]) -> None:
         for memory in memories:
             self._backend.upsert_memory(memory)
 
+    def upsert_edge(self, edge: MemoryEdge) -> None:
+        self._backend.upsert_edge(edge)
+
     def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
         for edge in edges:
             self._backend.upsert_edge(edge)
-
-
-class _CypherGraphStoreWrapper(_BulkUpsertMixin):
-    """Shared GraphStore implementation for Cypher-compatible backends (Neo4j, Memgraph)."""
-
-    def __init__(self, backend: _CypherGraphBackend) -> None:
-        self._backend: _CypherGraphBackend = backend
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._backend.upsert_memory(memory)
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._backend.upsert_edge(edge)
 
     def get_memory(self, memory_id: str) -> MemoryAtom | None:
         return self._backend.get_memory(memory_id)
@@ -418,7 +419,10 @@ class _CypherGraphStoreWrapper(_BulkUpsertMixin):
         return self._backend.list_edges()
 
 
-class Neo4jGraphStore(_CypherGraphStoreWrapper):
+_CypherGraphStoreWrapper = _BackendGraphStore
+
+
+class Neo4jGraphStore(_BackendGraphStore):
     """GraphStore backed by Neo4j relationships and node payload snapshots."""
 
     def __init__(
@@ -427,10 +431,10 @@ class Neo4jGraphStore(_CypherGraphStoreWrapper):
         *,
         _backend: _CypherGraphBackend | None = None,
     ) -> None:
-        super().__init__(_backend or _neo4j_backend(connection_string))
+        self._backend: _CypherGraphBackend = _backend or _neo4j_backend(connection_string)
 
 
-class MemgraphGraphStore(_CypherGraphStoreWrapper):
+class MemgraphGraphStore(_BackendGraphStore):
     """GraphStore backed by Memgraph via the Neo4j-compatible driver."""
 
     def __init__(
@@ -439,10 +443,10 @@ class MemgraphGraphStore(_CypherGraphStoreWrapper):
         *,
         _backend: _CypherGraphBackend | None = None,
     ) -> None:
-        super().__init__(_backend or _memgraph_backend(connection_string))
+        self._backend: _CypherGraphBackend = _backend or _memgraph_backend(connection_string)
 
 
-class ArangoDBGraphStore(_BulkUpsertMixin):
+class ArangoDBGraphStore(_BackendGraphStore):
     """GraphStore backed by ArangoDB document and edge collections."""
 
     def __init__(
@@ -452,18 +456,3 @@ class ArangoDBGraphStore(_BulkUpsertMixin):
         _backend: _ArangoGraphBackend | None = None,
     ) -> None:
         self._backend: _ArangoGraphBackend = _backend or _arangodb_backend(connection_string)
-
-    def upsert_memory(self, memory: MemoryAtom) -> None:
-        self._backend.upsert_memory(memory)
-
-    def upsert_edge(self, edge: MemoryEdge) -> None:
-        self._backend.upsert_edge(edge)
-
-    def get_memory(self, memory_id: str) -> MemoryAtom | None:
-        return self._backend.get_memory(memory_id)
-
-    def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]:
-        return self._backend.neighbors(memory_id)
-
-    def list_edges(self) -> tuple[MemoryEdge, ...]:
-        return self._backend.list_edges()
