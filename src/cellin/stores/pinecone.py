@@ -6,7 +6,8 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from cellin.core import VectorMatch
-from cellin.stores.vector_utils import cosine_similarity, vectorize
+from cellin.stores._remote_vector_base import _RemoteVectorBackendBase
+from cellin.stores.vector_utils import vectorize
 
 
 class _MissingPineconeDependencyError(RuntimeError):
@@ -47,7 +48,7 @@ def _index_names(client: object) -> set[str]:
     return {str(item) for item in raw_indexes}
 
 
-class _PineconeBackend:
+class _PineconeBackend(_RemoteVectorBackendBase):
     _VECTOR_DIMENSION = 12
 
     def __init__(self, connection_string: str) -> None:
@@ -162,12 +163,11 @@ class _PineconeBackend:
         matches = self._query_remote(query_vector, limit=limit)
         if len(matches) < limit:
             existing = {match.memory_id for match in matches}
-            for memory_id, vector in self._vectors.items():
-                if memory_id in self._tombstones or memory_id in existing:
+            for local in self._local_matches(query_vector):
+                if local.memory_id in existing:
                     continue
-                score = round(cosine_similarity(query_vector, vector), 6)
-                matches.append(VectorMatch(memory_id=memory_id, score=score))
-                existing.add(memory_id)
+                matches.append(local)
+                existing.add(local.memory_id)
         ordered = sorted(matches, key=lambda item: (-item.score, item.memory_id))
         return tuple(ordered[:limit])
 

@@ -37,6 +37,7 @@ class CanonicalIngestor:
     memory_store: MemoryStore
     vector_store: VectorStore
     adapters: Mapping[Modality, EnvelopeAdapter]
+    representation_store: VectorStore | None = None
 
     @classmethod
     def with_built_in_adapters(
@@ -46,6 +47,7 @@ class CanonicalIngestor:
         memory_store: MemoryStore,
         vector_store: VectorStore | None = None,
         vector_index: VectorStore | None = None,
+        representation_store: VectorStore | None = None,
     ) -> CanonicalIngestor:
         resolved_vector_store = vector_store if vector_store is not None else vector_index
         if resolved_vector_store is None:
@@ -66,6 +68,7 @@ class CanonicalIngestor:
             memory_store=memory_store,
             vector_store=resolved_vector_store,
             adapters=adapter_map,
+            representation_store=representation_store,
         )
 
     def ingest(self, artifacts: Sequence[Artifact]) -> tuple[MemoryAtom, ...]:
@@ -75,6 +78,8 @@ class CanonicalIngestor:
         self._persist_memories(memories)
         for memory in memories:
             self.vector_store.upsert(memory.memory_id, memory.text)
+            if self.representation_store is not None:
+                self.representation_store.upsert(memory.memory_id, memory.text)
         return memories
 
     def ingest_envelopes(self, envelopes: Sequence[ArtifactEnvelope]) -> IngestionBatchResult:
