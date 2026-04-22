@@ -19,7 +19,7 @@ from cellin.core import (
     Provenance,
     VectorStore,
 )
-from cellin.ingest.adapters import EnvelopeAdapter, built_in_adapters
+from cellin.ingest.adapters import EnvelopeAdapter, UnsupportedModalityError, built_in_adapters
 from cellin.ingest.envelope import ArtifactEnvelope, IngestionBatchResult
 
 
@@ -62,6 +62,8 @@ class CanonicalIngestor:
             Modality.CHAT: adapters[2],
             Modality.JSON: adapters[3],
             Modality.IMAGE: adapters[4],
+            Modality.AUDIO: adapters[5],
+            Modality.VIDEO: adapters[6],
         }
         return cls(
             graph_store=graph_store,
@@ -124,7 +126,9 @@ class CanonicalIngestor:
         return True
 
     def _normalize_envelope(self, envelope: ArtifactEnvelope) -> Artifact:
-        adapter = self.adapters[envelope.modality]
+        adapter = self.adapters.get(envelope.modality)
+        if adapter is None:
+            raise UnsupportedModalityError(envelope.modality)
         return adapter.normalize(envelope)
 
     def _artifact_to_memory(self, artifact: Artifact) -> MemoryAtom:
@@ -183,6 +187,19 @@ class CanonicalIngestor:
                         )
                     )
                 last_by_conversation[conversation_id] = memory.memory_id
+
+            caused_by = artifact.metadata.get("caused_by")
+            if isinstance(caused_by, str):
+                edges.append(
+                    self._edge(
+                        source_id=memory.memory_id,
+                        target_id=caused_by,
+                        kind=EdgeKind.CAUSED_BY,
+                        observed_at=artifact.created_at,
+                        source_ref=artifact.artifact_id,
+                        label=caused_by,
+                    )
+                )
 
         return tuple(edges)
 
