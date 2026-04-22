@@ -99,12 +99,12 @@ class _RedisVectorBackend:
         return tuple(ordered[:limit])
 
 
-_BACKENDS: dict[tuple[str, str], _RedisVectorBackend] = {}
+_BACKENDS: dict[tuple[str, str, str], _RedisVectorBackend] = {}
 
 
 def _backend_for(connection_string: str) -> _RedisVectorBackend:
     namespace, collection = _parse_namespace(connection_string)
-    key = (namespace, collection)
+    key = (connection_string, namespace, collection)
     backend = _BACKENDS.get(key)
     if backend is None:
         backend = _RedisVectorBackend(connection_string)

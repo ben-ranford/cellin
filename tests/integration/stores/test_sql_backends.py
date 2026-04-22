@@ -169,6 +169,10 @@ class _FakeSQLConnection:
         rows = self._engine.execute(query, params)
         return _FakeSQLResult(rows)
 
+    def executemany(self, query: str, rows: Sequence[tuple[object, ...]]) -> None:
+        for row in rows:
+            self._engine.execute(query, row)
+
 
 class _FakeMySQLCursor:
     def __init__(self, engine: _FakeSQLEngine) -> None:
@@ -178,6 +182,10 @@ class _FakeMySQLCursor:
     def execute(self, query: str, params: Sequence[object] = ()) -> _FakeMySQLCursor:
         self._rows = self._engine.execute(query, params)
         return self
+
+    def executemany(self, query: str, rows: Sequence[tuple[object, ...]]) -> None:
+        for row in rows:
+            self._engine.execute(query, row)
 
     def fetchall(self) -> list[tuple[object, ...]]:
         return list(self._rows)

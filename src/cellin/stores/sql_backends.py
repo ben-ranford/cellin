@@ -9,7 +9,13 @@ from typing import Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
 from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
-from cellin.stores.sqlite import _dump_edge, _dump_memory, _edge_archived, _load_edge, _load_memory
+from cellin.stores._graph_serialization import (
+    dump_edge,
+    dump_memory,
+    edge_is_archived,
+    load_edge,
+    load_memory,
+)
 
 
 class _MissingDuckDBDependencyError(RuntimeError):
@@ -30,6 +36,8 @@ class _QueryResult(Protocol):
 
 class _ExecutableConnection(Protocol):
     def execute(self, query: str, parameters: Sequence[object] | None = None) -> _QueryResult: ...
+
+    def executemany(self, query: str, rows: Sequence[tuple[object, ...]]) -> None: ...
 
     def __enter__(self) -> _ExecutableConnection: ...
 
@@ -119,10 +127,7 @@ class _RelationalBackend:
             return
 
         with self._connect() as connection:
-            for row in rows:
-                result = self._execute(connection, query, row)
-                if result is not None:
-                    self._consume_result(result)
+            connection.executemany(query, rows)
 
     def _ensure_schema(self) -> None:
         """Initialize schema exactly once per backend key."""
@@ -158,7 +163,7 @@ class _RelationalBackend:
         if not memories:
             return
 
-        rows = tuple((memory.memory_id, _dump_memory(memory)) for memory in memories)
+        rows = tuple((memory.memory_id, dump_memory(memory)) for memory in memories)
         self._execute_many(
             self._parametrize(self._spec.upsert_memory_sql, self._spec.parameter_style),
             rows,
@@ -168,18 +173,18 @@ class _RelationalBackend:
         row = self._fetch_one(self._MEMORY_GET_SQL, (memory_id,))
         if row is None:
             return None
-        return _load_memory(row[0])
+        return load_memory(row[0])
 
     def list_memories(self) -> tuple[MemoryAtom, ...]:
         rows = self._fetch_all(self._MEMORY_LIST_SQL)
-        return tuple(_load_memory(row[0]) for row in rows)
+        return tuple(load_memory(row[0]) for row in rows)
 
     def upsert_edges(self, edges: Sequence[MemoryEdge]) -> None:
         if not edges:
             return
 
         rows = tuple(
-            (edge.edge_id, edge.source_id, edge.target_id, _dump_edge(edge)) for edge in edges
+            (edge.edge_id, edge.source_id, edge.target_id, dump_edge(edge)) for edge in edges
         )
         self._execute_many(
             self._parametrize(self._spec.upsert_edge_sql, self._spec.parameter_style),
@@ -191,8 +196,8 @@ class _RelationalBackend:
         return tuple(
             edge
             for row in rows
-            if not _edge_archived(
-                edge := _load_edge(row[0]),
+            if not edge_is_archived(
+                edge := load_edge(row[0]),
             )
         )
 
@@ -201,8 +206,8 @@ class _RelationalBackend:
         return tuple(
             edge
             for row in rows
-            if not _edge_archived(
-                edge := _load_edge(row[0]),
+            if not edge_is_archived(
+                edge := load_edge(row[0]),
             )
         )
 
@@ -320,6 +325,11 @@ class _MySQLConnection:
         cursor = self._connection.cursor()
         cursor.execute(query, tuple(parameters) if parameters else ())
         return _MySQLCursor(cursor)
+
+    def executemany(self, query: str, rows: Sequence[tuple[object, ...]]) -> None:
+        cursor = self._connection.cursor()
+        cursor.executemany(query, list(rows))
+        cursor.close()
 
 
 def _build_mysql_connection(connection_string: str) -> Callable[[], _ExecutableConnection]:
