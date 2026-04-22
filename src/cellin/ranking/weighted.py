@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from math import log1p
 
@@ -66,13 +66,14 @@ def _vector_similarity(memory: MemoryAtom) -> float:
 class WeightedRanker:
     """Explainable weighted ranking over memory atoms.
 
-    The factor weights in *profile* are normalised at construction time so that
-    they sum to exactly 1.0.  This guarantees ``score`` returns a value in
-    ``[0.0, 1.0]`` whenever all individual factor values are in ``[0.0, 1.0]``.
+    Factor weights in *profile* need not sum to 1.0 — they are normalised
+    internally so that ``score`` always returns a value in ``[0.0, 1.0]``
+    when all individual factor values are in ``[0.0, 1.0]``.
     """
 
     profile: WeightProfile
     now_provider: Callable[[], datetime] = lambda: datetime.now(UTC)
+    _weight_total: float = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         total = (
@@ -90,25 +91,7 @@ class WeightedRanker:
                 f"WeightProfile '{self.profile.name}' has all-zero factor weights; "
                 "cannot normalise."
             )
-        if total != 1.0:
-            object.__setattr__(
-                self,
-                "profile",
-                WeightProfile(
-                    name=self.profile.name,
-                    semantic_similarity=self.profile.semantic_similarity / total,
-                    vector_similarity=self.profile.vector_similarity / total,
-                    graph_proximity=self.profile.graph_proximity / total,
-                    recency=self.profile.recency / total,
-                    salience=self.profile.salience / total,
-                    trust=self.profile.trust / total,
-                    reinforcement=self.profile.reinforcement / total,
-                    modality_match=self.profile.modality_match / total,
-                    token_budget=self.profile.token_budget,
-                    candidate_limit=self.profile.candidate_limit,
-                    recency_half_life_days=self.profile.recency_half_life_days,
-                ),
-            )
+        self._weight_total = total
 
     def score(self, query: str, memories: Sequence[MemoryAtom]) -> tuple[ScoredMemory, ...]:
         now = self.now_provider()
@@ -161,15 +144,16 @@ class WeightedRanker:
                     rationale="Vector-space similarity from the hybrid retrieval pass.",
                 ),
             )
+            w = self._weight_total
             total = (
-                self.profile.semantic_similarity * factors[0].value
-                + self.profile.vector_similarity * factors[7].value
-                + self.profile.graph_proximity * factors[1].value
-                + self.profile.recency * factors[2].value
-                + self.profile.salience * factors[3].value
-                + self.profile.trust * factors[4].value
-                + self.profile.reinforcement * factors[5].value
-                + self.profile.modality_match * factors[6].value
+                (self.profile.semantic_similarity / w) * factors[0].value
+                + (self.profile.vector_similarity / w) * factors[7].value
+                + (self.profile.graph_proximity / w) * factors[1].value
+                + (self.profile.recency / w) * factors[2].value
+                + (self.profile.salience / w) * factors[3].value
+                + (self.profile.trust / w) * factors[4].value
+                + (self.profile.reinforcement / w) * factors[5].value
+                + (self.profile.modality_match / w) * factors[6].value
             )
             scored.append(ScoredMemory(memory=memory, score=round(total, 6), factors=factors))
 

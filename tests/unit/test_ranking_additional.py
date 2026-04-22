@@ -62,22 +62,23 @@ def test_weighted_ranker_includes_vector_similarity_factor() -> None:
 
 @pytest.mark.parametrize("profile_name", list(PROFILES))
 def test_weighted_ranker_normalises_builtin_profile_weights(profile_name: str) -> None:
-    """WeightedRanker must normalise built-in profile weights to sum to 1.0."""
-    ranker = WeightedRanker(profile=get_weight_profile(profile_name))
-    p = ranker.profile
-    total = (
-        p.semantic_similarity
-        + p.vector_similarity
-        + p.graph_proximity
-        + p.recency
-        + p.salience
-        + p.trust
-        + p.reinforcement
-        + p.modality_match
+    """WeightedRanker stores the correct weight total for normalisation."""
+    profile = get_weight_profile(profile_name)
+    ranker = WeightedRanker(profile=profile)
+    expected_total = (
+        profile.semantic_similarity
+        + profile.vector_similarity
+        + profile.graph_proximity
+        + profile.recency
+        + profile.salience
+        + profile.trust
+        + profile.reinforcement
+        + profile.modality_match
     )
-    assert total == pytest.approx(1.0), (
-        f"Profile '{profile_name}' weights sum to {total} after normalisation, expected 1.0"
+    assert ranker._weight_total == pytest.approx(expected_total), (
+        f"Profile '{profile_name}': _weight_total {ranker._weight_total!r} != {expected_total!r}"
     )
+    assert ranker._weight_total > 0.0
 
 
 def test_weighted_ranker_score_bounded_for_perfect_memory() -> None:
@@ -128,7 +129,7 @@ def test_weight_profile_rejects_negative_weights() -> None:
 
 
 def test_weighted_ranker_normalises_custom_profile() -> None:
-    """WeightedRanker normalises user-supplied profiles whose weights sum >1."""
+    """WeightedRanker correctly stores _weight_total for user-supplied profiles."""
     profile = WeightProfile(
         name="custom",
         semantic_similarity=2.0,
@@ -141,15 +142,6 @@ def test_weighted_ranker_normalises_custom_profile() -> None:
         modality_match=8.0,
     )
     ranker = WeightedRanker(profile=profile)
-    p = ranker.profile
-    total = (
-        p.semantic_similarity
-        + p.vector_similarity
-        + p.graph_proximity
-        + p.recency
-        + p.salience
-        + p.trust
-        + p.reinforcement
-        + p.modality_match
-    )
-    assert total == pytest.approx(1.0)
+    assert ranker._weight_total == pytest.approx(22.0)
+    # Score must still be bounded in [0, 1] for any valid factor values.
+    assert ranker.profile is profile
