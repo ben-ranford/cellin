@@ -29,6 +29,7 @@ from cellin.dreaming.strategies import (
     _similarity,
     _string_list,
 )
+from cellin.stores._store_utils import filter_memories
 
 
 def _memory(
@@ -75,14 +76,7 @@ class InMemoryMemoryStore(MemoryStore):
         archived: bool | None = None,
         topic: str | None = None,
     ) -> Sequence[MemoryAtom]:
-        result: list[MemoryAtom] = []
-        for memory in self._memories.values():
-            if archived is not None and memory.decay.archived != archived:
-                continue
-            if topic is not None and memory.metadata.get("topic") != topic:
-                continue
-            result.append(memory)
-        return result
+        return filter_memories(self._memories.values(), archived=archived, topic=topic)
 
 
 class InMemoryGraphStore(GraphStore):

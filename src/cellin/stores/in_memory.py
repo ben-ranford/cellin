@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 from cellin.core import MemoryAtom, MemoryEdge, MemoryStore
 from cellin.stores._graph_serialization import edge_is_archived
+from cellin.stores._store_utils import filter_memories
 
 
 class InMemoryMemoryStore:
@@ -34,15 +35,7 @@ class InMemoryMemoryStore:
         archived: bool | None = None,
         topic: str | None = None,
     ) -> Sequence[MemoryAtom]:
-        """Return memories filtered by archived state and/or topic."""
-        result: list[MemoryAtom] = []
-        for memory in self._memories.values():
-            if archived is not None and memory.decay.archived != archived:
-                continue
-            if topic is not None and memory.metadata.get("topic") != topic:
-                continue
-            result.append(memory)
-        return result
+        return filter_memories(self._memories.values(), archived=archived, topic=topic)
 
 
 class InMemoryGraphStore:

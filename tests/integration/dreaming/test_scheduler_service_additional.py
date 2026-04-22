@@ -23,6 +23,7 @@ from cellin.core import (
 from cellin.dreaming.models import DreamDiff, DreamEdgeChange, DreamMemoryChange, DreamRunResult
 from cellin.dreaming.scheduler import DeterministicDreamScheduler
 from cellin.dreaming.service import DreamRunner
+from cellin.stores._store_utils import filter_memories
 
 
 def _memory(
@@ -82,14 +83,7 @@ class InMemoryMemoryStore(MemoryStore):
         archived: bool | None = None,
         topic: str | None = None,
     ) -> Sequence[MemoryAtom]:
-        result: list[MemoryAtom] = []
-        for memory in self.memories.values():
-            if archived is not None and memory.decay.archived != archived:
-                continue
-            if topic is not None and memory.metadata.get("topic") != topic:
-                continue
-            result.append(memory)
-        return result
+        return filter_memories(self.memories.values(), archived=archived, topic=topic)
 
 
 @dataclass

@@ -34,6 +34,7 @@ from cellin.ingest import CanonicalIngestor
 from cellin.ranking import WeightedRanker, get_weight_profile
 from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
 from cellin.runtime.storage import StorageConfig, build_storage_bundle
+from cellin.stores._store_utils import filter_memories
 
 
 def _json_float_map(values: dict[str, float]) -> dict[str, JSONValue]:
@@ -87,14 +88,7 @@ class _InMemoryMemoryStore(MemoryStore):
         archived: bool | None = None,
         topic: str | None = None,
     ) -> Sequence[MemoryAtom]:
-        result: list[MemoryAtom] = []
-        for memory in self._memories.values():
-            if archived is not None and memory.decay.archived != archived:
-                continue
-            if topic is not None and memory.metadata.get("topic") != topic:
-                continue
-            result.append(memory)
-        return result
+        return filter_memories(self._memories.values(), archived=archived, topic=topic)
 
 
 class _InMemoryGraphStore(GraphStore):
