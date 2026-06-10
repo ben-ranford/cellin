@@ -7,8 +7,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Protocol
 
-from cellin.core import GraphStore, MemoryStore, VectorStore
-from cellin.dreaming.models import DreamDiff, DreamRunResult
+from cellin.core import GraphStore, MemoryAtom, MemoryEdge, MemoryStore, VectorStore
+from cellin.dreaming.models import DreamDiff, DreamEdgeChange, DreamMemoryChange, DreamRunResult
 from cellin.dreaming.scheduler import DeterministicDreamScheduler
 from cellin.dreaming.strategies import (
     AbstractionDreamStrategy,
@@ -81,40 +81,46 @@ class DreamRunner:
                 results.append(result)
         return tuple(results)
 
+    def _archive_edge(self, edge: MemoryEdge) -> None:
+        self.graph_store.upsert_edge(
+            replace(
+                edge,
+                metadata={**edge.metadata, "archived": True},
+            )
+        )
+
+    def _rollback_edge_change(self, edge_change: DreamEdgeChange) -> None:
+        if edge_change.before is None and edge_change.after is not None:
+            self._archive_edge(edge_change.after)
+        elif edge_change.before is not None:
+            self.graph_store.upsert_edge(edge_change.before)
+
+    def _archive_memory(self, memory: MemoryAtom) -> None:
+        archived = replace(
+            memory,
+            decay=replace(memory.decay, archived=True),
+        )
+        self.memory_store.put(archived)
+        self.graph_store.upsert_memory(archived)
+
+    def _restore_vector_if_needed(self, restored: MemoryAtom, after: MemoryAtom | None) -> None:
+        if self.vector_store is None or not hasattr(self.vector_store, "delete"):
+            return
+        if after is not None and after.decay.archived and not restored.decay.archived:
+            self.vector_store.upsert(restored.memory_id, restored.text)
+
+    def _rollback_memory_change(self, memory_change: DreamMemoryChange) -> None:
+        if memory_change.before is None and memory_change.after is not None:
+            self._archive_memory(memory_change.after)
+        elif memory_change.before is not None:
+            restored = memory_change.before
+            self.memory_store.put(restored)
+            self.graph_store.upsert_memory(restored)
+            self._restore_vector_if_needed(restored, memory_change.after)
+
     def rollback(self, diff: DreamDiff) -> None:
         for edge_change in reversed(diff.edge_changes):
-            if edge_change.before is None and edge_change.after is not None:
-                self.graph_store.upsert_edge(
-                    replace(
-                        edge_change.after,
-                        metadata={**edge_change.after.metadata, "archived": True},
-                    )
-                )
-                continue
-
-            if edge_change.before is not None:
-                self.graph_store.upsert_edge(edge_change.before)
+            self._rollback_edge_change(edge_change)
 
         for memory_change in reversed(diff.memory_changes):
-            if memory_change.before is None and memory_change.after is not None:
-                archived = replace(
-                    memory_change.after,
-                    decay=replace(memory_change.after.decay, archived=True),
-                )
-                self.memory_store.put(archived)
-                self.graph_store.upsert_memory(archived)
-                continue
-
-            if memory_change.before is not None:
-                restored = memory_change.before
-                self.memory_store.put(restored)
-                self.graph_store.upsert_memory(restored)
-                after = memory_change.after
-                if (
-                    self.vector_store is not None
-                    and hasattr(self.vector_store, "delete")
-                    and after is not None
-                    and after.decay.archived
-                    and not restored.decay.archived
-                ):
-                    self.vector_store.upsert(restored.memory_id, restored.text)
+            self._rollback_memory_change(memory_change)

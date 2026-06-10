@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from cellin.__about__ import __version__
 from cellin.core.contracts import Capability, PluginContext, PluginManifest
@@ -14,17 +15,17 @@ from cellin.core.models import JSONValue, TraceEvent
 class InMemoryTraceSinkPlugin:
     """A minimal built-in plugin used to exercise runtime registration."""
 
-    events: list[TraceEvent] = field(default_factory=list)
-    context: PluginContext | None = None
-    started: bool = False
-
-    manifest = PluginManifest(
+    manifest: ClassVar[PluginManifest] = PluginManifest(
         plugin_id="in-memory-trace-sink",
         version=__version__,
         capabilities=(Capability.TRACE_SINK,),
         display_name="In-memory trace sink",
         description="Stores trace events in memory for tests and local development.",
     )
+
+    events: list[TraceEvent] = field(default_factory=list)
+    context: PluginContext | None = None
+    started: bool = False
 
     def configure(self, context: PluginContext) -> None:
         self.context = context
@@ -48,16 +49,16 @@ class InMemoryTraceSinkPlugin:
 class WeightedRankerPlugin:
     """Built-in plugin that exposes WeightedRanker as a RANKER capability."""
 
-    _settings: Mapping[str, JSONValue] = field(default_factory=dict)
-    _ranker: object = field(default=None, init=False, repr=False)
-
-    manifest = PluginManifest(
+    manifest: ClassVar[PluginManifest] = PluginManifest(
         plugin_id="weighted-ranker",
         version=__version__,
         capabilities=(Capability.RANKER,),
         display_name="Weighted ranker",
         description="Deterministic explainable weighted ranking over memory atoms.",
     )
+
+    _settings: Mapping[str, JSONValue] = field(default_factory=dict)
+    _ranker: object = field(default=None, init=False, repr=False)
 
     def configure(self, context: PluginContext) -> None:
         self._settings = context.plugin_settings
@@ -70,7 +71,7 @@ class WeightedRankerPlugin:
         self._ranker = WeightedRanker(profile=get_weight_profile(str(profile_name)))
 
     def stop(self) -> None:
-        pass
+        self._ranker = None
 
     @property
     def ranker(self) -> object:
@@ -82,16 +83,16 @@ class WeightedRankerPlugin:
 class WeightedRetrieverPlugin:
     """Built-in plugin that exposes WeightedRetriever as a RETRIEVER capability."""
 
-    _settings: Mapping[str, JSONValue] = field(default_factory=dict)
-    _retriever: object = field(default=None, init=False, repr=False)
-
-    manifest = PluginManifest(
+    manifest: ClassVar[PluginManifest] = PluginManifest(
         plugin_id="weighted-retriever",
         version=__version__,
         capabilities=(Capability.RETRIEVER,),
         display_name="Weighted retriever",
         description="Assembles explainable memory bundles from candidate memory atoms.",
     )
+
+    _settings: Mapping[str, JSONValue] = field(default_factory=dict)
+    _retriever: object = field(default=None, init=False, repr=False)
 
     def configure(self, context: PluginContext) -> None:
         self._settings = context.plugin_settings
@@ -115,7 +116,7 @@ class WeightedRetrieverPlugin:
         )
 
     def stop(self) -> None:
-        pass
+        self._retriever = None
 
     @property
     def retriever(self) -> object:

@@ -42,7 +42,7 @@ jobs:
       - name: Run release-please
         if: ${{ env.RELEASE_PLEASE_TOKEN != '' && steps.validate_release_token.outcome == 'success' }}
         id: release
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
         with:
           token: ${{ env.RELEASE_PLEASE_TOKEN }}
           target-branch: main

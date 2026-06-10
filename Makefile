@@ -66,15 +66,16 @@ package:
 
 package-smoke: package
 	$(UV) run twine check --strict dist/*
-	tmpdir=$$(mktemp -d); \
-		python3 -m venv "$$tmpdir/venv"; \
-		"$$tmpdir/venv/bin/pip" install --upgrade pip >/dev/null; \
-		"$$tmpdir/venv/bin/pip" install dist/*.whl >/dev/null; \
-		expected_version=$$(python3 scripts/release/verify_version.py --print-version); \
+	set -e; \
+		tmpdir=$$(mktemp -d); \
+		trap 'rm -rf "$$tmpdir"' EXIT; \
+		$(UV) run python -m venv "$$tmpdir/venv"; \
+		"$$tmpdir/venv/bin/python" -m pip install --upgrade pip >/dev/null; \
+		"$$tmpdir/venv/bin/python" -m pip install dist/*.whl >/dev/null; \
+		expected_version=$$($(UV) run python scripts/release/verify_version.py --print-version); \
 		"$$tmpdir/venv/bin/cellin" --version | grep -q "$$expected_version"; \
 		"$$tmpdir/venv/bin/cellin" plugin list | grep -q "in-memory-trace-sink"; \
-		"$$tmpdir/venv/bin/cellin" storage list --role memory | grep -q "role=memory backend=in_memory"; \
-		rm -rf "$$tmpdir"
+		"$$tmpdir/venv/bin/cellin" storage list --role memory | grep -q "role=memory backend=in_memory"
 
 version-check:
 	$(UV) run python scripts/release/verify_version.py $(if $(TAG),--tag $(TAG),) $(if $(EXPECT_VERSION),--expect-version $(EXPECT_VERSION),) --release-kind $(RELEASE_KIND)

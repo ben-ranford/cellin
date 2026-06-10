@@ -8,13 +8,14 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from cellin.features.registry import FeatureFlag, validate_registry  # noqa: E402
+from cellin.features.registry import FeatureFlag, Lifecycle, validate_registry  # noqa: E402
 
 FEATURE_CODE_PATTERN = re.compile(r"^CELN-FEAT-(\d{4})$")
 DEFAULT_REGISTRY_PATH = REPO_ROOT / "src/cellin/features/registry.py"
@@ -58,8 +59,31 @@ def _parse_feature_flag(node: ast.expr) -> FeatureFlag:
         code=_feature_keyword_value(node, "code"),
         name=_feature_keyword_value(node, "name"),
         description=_feature_keyword_value(node, "description"),
-        lifecycle=_feature_keyword_value(node, "lifecycle"),
+        lifecycle=cast(Lifecycle, _feature_keyword_value(node, "lifecycle")),
     )
+
+
+def _assigned_name_value(node: ast.Assign, name: str) -> ast.expr | None:
+    for target in node.targets:
+        if isinstance(target, ast.Name) and target.id == name:
+            return node.value
+    return None
+
+
+def _registry_assignment_value(module: ast.Module) -> ast.expr:
+    for node in module.body:
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "REGISTRY"
+            and node.value is not None
+        ):
+            return node.value
+
+        if isinstance(node, ast.Assign) and (value := _assigned_name_value(node, "REGISTRY")):
+            return value
+
+    raise ValueError("REGISTRY assignment not found.")
 
 
 def load_registry_definition(path: Path = DEFAULT_REGISTRY_PATH) -> RegistryDefinition:
@@ -68,26 +92,7 @@ def load_registry_definition(path: Path = DEFAULT_REGISTRY_PATH) -> RegistryDefi
     source = path.read_text(encoding="utf-8")
     module = ast.parse(source)
 
-    registry_value: ast.expr | None = None
-    for node in module.body:
-        if (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == "REGISTRY"
-            and node.value is not None
-        ):
-            registry_value = node.value
-            break
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "REGISTRY":
-                    registry_value = node.value
-                    break
-            if registry_value is not None:
-                break
-
-    if registry_value is None:
-        raise ValueError("REGISTRY assignment not found.")
+    registry_value = _registry_assignment_value(module)
     if not isinstance(registry_value, ast.Tuple):
         raise ValueError("REGISTRY must be defined as a tuple literal.")
     if registry_value.end_lineno is None or registry_value.end_col_offset is None:

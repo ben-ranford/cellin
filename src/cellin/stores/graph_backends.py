@@ -260,42 +260,54 @@ class _ArangoGraphBackend:
         if not self._database.has_collection("cellin_edges"):
             self._database.create_collection("cellin_edges", edge=True)
 
+    def _find_edge_documents_with_finder(
+        self,
+        finder: object,
+        filters: dict[str, object] | None,
+    ) -> list[dict[str, object]] | None:
+        if not callable(finder):
+            return None
+
+        try:
+            return list(finder()) if filters is None else list(finder(filters))
+        except TypeError:
+            return self._find_edge_documents_with_keyword_filters(finder, filters)
+        except Exception:
+            return None
+
+    def _find_edge_documents_with_keyword_filters(
+        self,
+        finder: object,
+        filters: dict[str, object] | None,
+    ) -> list[dict[str, object]] | None:
+        if filters is None or not callable(finder):
+            return None
+        try:
+            return list(finder(filters=filters))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _document_matches(
+        document: dict[str, object],
+        filters: dict[str, object],
+    ) -> bool:
+        return all(document.get(name) == value for name, value in filters.items())
+
     def _find_edge_documents(
         self, filters: dict[str, object] | None = None
     ) -> list[dict[str, object]]:
-        finder = getattr(self._edge_collection, "find", None)
-        if callable(finder):
-
-            def _find_documents() -> list[dict[str, object]] | None:
-                try:
-                    if filters is None:
-                        return list(finder())
-                    return list(finder(filters))
-                except TypeError:
-                    if filters is None:
-                        return None
-                    try:
-                        return list(finder(filters=filters))
-                    except Exception:
-                        return None
-                except Exception:
-                    return None
-
-            documents = _find_documents()
-            if documents is not None:
-                return documents
+        documents = self._find_edge_documents_with_finder(
+            getattr(self._edge_collection, "find", None),
+            filters,
+        )
+        if documents is not None:
+            return documents
 
         edges = self._edge_collection.all()
         if not filters:
             return [dict(document) for document in edges]
-
-        def matches(document: dict[str, object], filters: dict[str, object]) -> bool:
-            for name, value in filters.items():
-                if document.get(name) != value:
-                    return False
-            return True
-
-        return [dict(document) for document in edges if matches(document, filters)]
+        return [dict(document) for document in edges if self._document_matches(document, filters)]
 
     def _ensure_memory_placeholder(self, memory_id: str) -> None:
         key = _arangodb_key(memory_id)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterator
 from importlib import metadata
 from typing import cast
 
@@ -117,7 +117,7 @@ class PluginRegistry:
 
         return tuple(self._plugins.keys())
 
-    def __iter__(self) -> Iterable[Plugin]:
+    def __iter__(self) -> Iterator[Plugin]:
         """Iterate registered plugins in registration order."""
 
         return iter(self._plugins.values())

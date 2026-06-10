@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import ClassVar
 
 import pytest
 
@@ -47,7 +48,7 @@ class MissingManifestPlugin:
 
 @dataclass
 class MissingStopPlugin:
-    manifest = PluginManifest(
+    manifest: ClassVar[PluginManifest] = PluginManifest(
         plugin_id="missing-stop",
         version="1.0.0",
         capabilities=(Capability.TRACE_SINK,),
