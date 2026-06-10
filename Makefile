@@ -3,7 +3,7 @@ TAG ?=
 EXPECT_VERSION ?=
 RELEASE_KIND ?= any
 
-.PHONY: bootstrap hooks fmt fmt-check lint typecheck test coverage eval-smoke eval-full eval package package-smoke version-check release-smoke verify ci docs
+.PHONY: bootstrap hooks fmt fmt-check lint typecheck test coverage eval-smoke eval-full eval package package-smoke version-check release-smoke verify ci docs feature-flag feature-registry-check
 
 bootstrap:
 	$(UV) sync --dev
@@ -11,6 +11,13 @@ bootstrap:
 
 hooks:
 	$(UV) run lefthook install
+
+feature-flag:
+	test -n "$(NAME)"
+	$(UV) run python scripts/add_feature_flag.py --name "$(NAME)"
+
+feature-registry-check:
+	$(UV) run python scripts/check_feature_registry.py
 
 fmt:
 	$(UV) run ruff format src tests docs scripts
@@ -60,7 +67,7 @@ version-check:
 
 release-smoke: ci package-smoke
 
-verify: fmt-check lint typecheck coverage eval-smoke
+verify: feature-registry-check fmt-check lint typecheck coverage eval-smoke
 
 ci: verify docs version-check
 
