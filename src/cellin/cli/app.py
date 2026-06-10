@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from cellin import __version__
+from cellin.__about__ import __version__
 from cellin.cli.config import (
     ResolvedWorkspace,
+    WorkspaceFeaturesConfig,
     append_trace,
     init_workspace,
     load_workspace,
@@ -22,6 +25,7 @@ from cellin.core.models import JSONValue
 from cellin.dreaming import DreamRunner
 from cellin.dreaming.models import DreamDiff
 from cellin.evals import run_evaluation_suite
+from cellin.features import REGISTRY, ReleaseChannel, resolve_features
 from cellin.ingest import ArtifactEnvelope, CanonicalIngestor
 from cellin.ranking import WeightedRanker, get_weight_profile
 from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
@@ -39,6 +43,20 @@ from cellin.runtime.storage import StorageConfig
 
 TRACE_INSPECT_SUCCESS_EXIT_CODE = 0
 STORAGE_ROLE_CHOICES = ("memory", "graph", "vector", "representation")
+DEFAULT_FEATURE_LIST_FORMAT = "table"
+
+
+@dataclass(frozen=True, slots=True)
+class FeatureContext:
+    """Resolved feature activation for the current invocation."""
+
+    channel: ReleaseChannel
+    enabled_names: tuple[str, ...]
+    disabled_names: tuple[str, ...]
+    resolved: dict[str, bool]
+
+    def is_enabled(self, code: str) -> bool:
+        return self.resolved.get(code, False)
 
 
 def _load_envelopes(input_path: Path) -> tuple[ArtifactEnvelope, ...]:
@@ -88,13 +106,69 @@ def _record(config_path: Path, name: str, payload: dict[str, JSONValue]) -> None
     append_trace(load_workspace(config_path), name=name, payload=payload)
 
 
-def cmd_init(args: argparse.Namespace) -> int:
+def _release_channel() -> ReleaseChannel:
+    channel = os.getenv("CELLIN_RELEASE_CHANNEL", "release")
+    if channel not in {"release", "dev", "rolling"}:
+        raise ValueError(f"Unknown release channel `{channel}`.")
+    return cast(ReleaseChannel, channel)
+
+
+def _merge_feature_names(
+    config_features: WorkspaceFeaturesConfig,
+    cli_enable: Sequence[str],
+    cli_disable: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    enabled = set(config_features.enable)
+    disabled = set(config_features.disable)
+    enabled -= set(cli_disable)
+    disabled -= set(cli_enable)
+    enabled.update(cli_enable)
+    disabled.update(cli_disable)
+    return tuple(sorted(enabled)), tuple(sorted(disabled))
+
+
+def _resolve_feature_context(args: argparse.Namespace) -> FeatureContext:
+    config_features = WorkspaceFeaturesConfig()
+    config_path = getattr(args, "config", None)
+    if isinstance(config_path, str):
+        config_features = load_workspace(Path(config_path)).features
+
+    enabled_names, disabled_names = _merge_feature_names(
+        config_features,
+        getattr(args, "enable_feature", ()) or (),
+        getattr(args, "disable_feature", ()) or (),
+    )
+    channel = _release_channel()
+    resolved = resolve_features(REGISTRY, channel, {}, enabled_names, disabled_names)
+
+    return FeatureContext(
+        channel=channel,
+        enabled_names=enabled_names,
+        disabled_names=disabled_names,
+        resolved=resolved,
+    )
+
+
+def _feature_manifest_defaults(channel: ReleaseChannel) -> list[dict[str, object]]:
+    defaults = resolve_features(REGISTRY, channel, {}, (), ())
+    return [
+        {
+            "code": feature.code,
+            "name": feature.name,
+            "lifecycle": feature.lifecycle,
+            "default_enabled": defaults[feature.code],
+        }
+        for feature in REGISTRY
+    ]
+
+
+def cmd_init(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     config_path = init_workspace(Path(args.workspace))
     print(f"initialized workspace config={config_path}")
     return 0
 
 
-def cmd_ingest(args: argparse.Namespace) -> int:
+def cmd_ingest(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     config_path = Path(args.config)
     workspace = load_workspace(config_path)
     bundle = build_storage_bundle(workspace.storage, workspace_root=config_path.parent)
@@ -122,7 +196,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_retrieve(args: argparse.Namespace) -> int:
+def cmd_retrieve(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     config_path = Path(args.config)
     bundle = _retriever(config_path).retrieve(args.query, top_k=args.top_k)
     _record(
@@ -146,7 +220,7 @@ def cmd_retrieve(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_dream_run(args: argparse.Namespace) -> int:
+def cmd_dream_run(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     config_path = Path(args.config)
     workspace = load_workspace(config_path)
     bundle = build_storage_bundle(workspace.storage, workspace_root=config_path.parent)
@@ -184,7 +258,7 @@ def cmd_dream_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_dream_inspect(args: argparse.Namespace) -> int:
+def cmd_dream_inspect(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     diff_path = Path(args.diff_file)
     raw = json.loads(diff_path.read_text(encoding="utf-8"))
     diff = DreamDiff.from_dict(raw)
@@ -225,7 +299,7 @@ def cmd_dream_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_dream_rollback(args: argparse.Namespace) -> int:
+def cmd_dream_rollback(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     diff_path = Path(args.diff_file)
     raw = json.loads(diff_path.read_text(encoding="utf-8"))
     diff = DreamDiff.from_dict(raw)
@@ -245,7 +319,7 @@ def cmd_dream_rollback(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_plugin_list(_: argparse.Namespace) -> int:
+def cmd_plugin_list(_: argparse.Namespace, _feature_context: FeatureContext) -> int:
     registry = PluginRegistry()
     registry.register(InMemoryTraceSinkPlugin())
     try:
@@ -269,7 +343,7 @@ def _selected_storage_roles(raw_roles: Sequence[str] | None) -> tuple[StorageRol
     return tuple(cast(StorageRole, role) for role in raw_roles)
 
 
-def cmd_storage_list(args: argparse.Namespace) -> int:
+def cmd_storage_list(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     try:
         load_storage_backends_from_entry_points()
     except (TypeError, ValueError):
@@ -281,7 +355,7 @@ def cmd_storage_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_storage_init(args: argparse.Namespace) -> int:
+def cmd_storage_init(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     config_path = Path(args.config)
     workspace = load_workspace(config_path)
     selected_roles = _selected_storage_roles(args.role)
@@ -322,7 +396,7 @@ def _resolve_eval_storage_config(backend: str | None) -> StorageConfig | None:
     return None
 
 
-def cmd_eval_run(args: argparse.Namespace) -> int:
+def cmd_eval_run(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     output_path = Path(args.output) if args.output else Path("eval-results") / f"{args.suite}.json"
     storage_config = _resolve_eval_storage_config(getattr(args, "backend", None))
     report = run_evaluation_suite(
@@ -344,7 +418,7 @@ def cmd_eval_run(args: argparse.Namespace) -> int:
     return 0 if report.status == "ok" else 1
 
 
-def cmd_trace_inspect(args: argparse.Namespace) -> int:
+def cmd_trace_inspect(args: argparse.Namespace, _feature_context: FeatureContext) -> int:
     events = read_traces(load_workspace(Path(args.config)), limit=args.limit)
     if not events:
         print("no trace events recorded")
@@ -358,9 +432,46 @@ def cmd_trace_inspect(args: argparse.Namespace) -> int:
     return TRACE_INSPECT_SUCCESS_EXIT_CODE
 
 
+def cmd_features_list(args: argparse.Namespace, feature_context: FeatureContext) -> int:
+    rows = _feature_manifest_defaults(feature_context.channel)
+    if args.format == "json":
+        print(json.dumps(rows, indent=2, sort_keys=True))
+        return 0
+
+    code_width = max((len(str(row["code"])) for row in rows), default=4)
+    name_width = max((len(str(row["name"])) for row in rows), default=4)
+    lifecycle_width = max((len(str(row["lifecycle"])) for row in rows), default=9)
+    default_width = max(
+        (len("enabled") if row["default_enabled"] else len("disabled") for row in rows),
+        default=7,
+    )
+    code_width = max(code_width, len("CODE"))
+    name_width = max(name_width, len("NAME"))
+    lifecycle_width = max(lifecycle_width, len("LIFECYCLE"))
+    default_width = max(default_width, len("DEFAULT"))
+
+    print(
+        f"{'CODE':<{code_width}} "
+        f"{'NAME':<{name_width}} "
+        f"{'LIFECYCLE':<{lifecycle_width}} "
+        f"{'DEFAULT':<{default_width}}"
+    )
+    for row in rows:
+        default_value = "enabled" if row["default_enabled"] else "disabled"
+        print(
+            f"{row['code']:<{code_width}} "
+            f"{row['name']:<{name_width}} "
+            f"{row['lifecycle']:<{lifecycle_width}} "
+            f"{default_value:<{default_width}}"
+        )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Cellin local-first CLI")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--enable-feature", action="append", default=[], metavar="NAME")
+    parser.add_argument("--disable-feature", action="append", default=[], metavar="NAME")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init")
@@ -416,6 +527,16 @@ def build_parser() -> argparse.ArgumentParser:
     plugin_list_parser = plugin_subparsers.add_parser("list")
     plugin_list_parser.set_defaults(handler=cmd_plugin_list)
 
+    features_parser = subparsers.add_parser("features")
+    features_subparsers = features_parser.add_subparsers(dest="features_command", required=True)
+    features_list_parser = features_subparsers.add_parser("list")
+    features_list_parser.add_argument(
+        "--format",
+        choices=("json", "table"),
+        default=DEFAULT_FEATURE_LIST_FORMAT,
+    )
+    features_list_parser.set_defaults(handler=cmd_features_list)
+
     eval_parser = subparsers.add_parser("eval")
     eval_subparsers = eval_parser.add_subparsers(dest="eval_command", required=True)
     eval_run_parser = eval_subparsers.add_parser("run")
@@ -439,4 +560,5 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     handler = args.handler
-    return int(handler(args))
+    feature_context = _resolve_feature_context(args)
+    return int(handler(args, feature_context))
