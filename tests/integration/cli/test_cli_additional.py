@@ -181,3 +181,28 @@ def test_cli_storage_init_reports_empty_selection(
 
 def test_eval_storage_config_unknown_backend_falls_back_to_default() -> None:
     assert app_module._resolve_eval_storage_config("custom") is None
+
+
+def test_cli_mcp_serve_check_reports_startup_status(
+    tmp_path: Path,
+    capsys: CaptureFixture[str],
+) -> None:
+    assert (
+        main(
+            [
+                "mcp",
+                "serve",
+                "--workspace-root",
+                str(tmp_path),
+                "--data-dir",
+                "subjects",
+                "--check",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["workspace_root"] == str(tmp_path.resolve())
+    assert payload["data_directory"] == str((tmp_path / "subjects").resolve())

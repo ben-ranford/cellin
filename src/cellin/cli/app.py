@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import cast
+from typing import SupportsInt, cast
 
 from cellin.__about__ import __version__
 from cellin.cli.config import (
@@ -27,6 +27,8 @@ from cellin.dreaming.models import DreamDiff
 from cellin.evals import run_evaluation_suite
 from cellin.features import REGISTRY, ReleaseChannel, resolve_features
 from cellin.ingest import ArtifactEnvelope, CanonicalIngestor
+from cellin.mcp.server import serve_stdio, startup_check
+from cellin.mcp.subjects import SubjectRegistry
 from cellin.ranking import WeightedRanker, get_weight_profile
 from cellin.retrieval import RetrievalCandidateGenerator, WeightedRetriever
 from cellin.runtime import (
@@ -467,6 +469,36 @@ def cmd_features_list(args: argparse.Namespace, feature_context: FeatureContext)
     return 0
 
 
+def _mcp_subject_registry(args: argparse.Namespace) -> SubjectRegistry:
+    if args.config is None:
+        return SubjectRegistry(
+            workspace_root=Path(args.workspace_root),
+            data_directory=Path(args.data_dir),
+        )
+
+    config_path = Path(args.config)
+    workspace = load_workspace(config_path)
+    return SubjectRegistry(
+        workspace_root=config_path.parent,
+        storage_config=workspace.storage,
+        data_directory=Path(args.data_dir),
+    )
+
+
+def cmd_mcp_serve(args: argparse.Namespace, _feature_context: FeatureContext) -> None:
+    registry = _mcp_subject_registry(args)
+    if args.check:
+        print(json.dumps(startup_check(registry), sort_keys=True))
+    else:
+        serve_stdio(registry)
+
+
+def _exit_code(result: SupportsInt | None) -> int:
+    if result is None:
+        return 0
+    return int(result)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Cellin local-first CLI")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -537,6 +569,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     features_list_parser.set_defaults(handler=cmd_features_list)
 
+    mcp_parser = subparsers.add_parser("mcp")
+    mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command", required=True)
+    mcp_serve_parser = mcp_subparsers.add_parser("serve")
+    mcp_serve_parser.add_argument("--workspace-root", default=".")
+    mcp_serve_parser.add_argument("--data-dir", default="data")
+    mcp_serve_parser.add_argument("--config")
+    mcp_serve_parser.add_argument("--check", action="store_true")
+    mcp_serve_parser.set_defaults(handler=cmd_mcp_serve)
+
     eval_parser = subparsers.add_parser("eval")
     eval_subparsers = eval_parser.add_subparsers(dest="eval_command", required=True)
     eval_run_parser = eval_subparsers.add_parser("run")
@@ -561,4 +602,4 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     handler = args.handler
     feature_context = _resolve_feature_context(args)
-    return int(handler(args, feature_context))
+    return _exit_code(handler(args, feature_context))
