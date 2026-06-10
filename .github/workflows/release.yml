@@ -78,9 +78,23 @@ jobs:
           name: release-bundle-${{ github.ref_name }}
           path: dist
 
-      - name: Publish GitHub release
+      - name: Validate GitHub release token
+        id: validate_github_release_token
+        continue-on-error: true
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+        run: gh api "repos/${REPO}/releases?per_page=1" >/dev/null
+
+      - name: Report unavailable GitHub release token
+        if: ${{ steps.validate_github_release_token.outcome != 'success' }}
+        run: |
+          echo "::warning::GitHub rejected the release token. Skipping GitHub release publication until the token is refreshed."
+
+      - name: Publish GitHub release
+        if: ${{ steps.validate_github_release_token.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         shell: bash
