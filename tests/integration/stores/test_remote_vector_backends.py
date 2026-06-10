@@ -1054,6 +1054,7 @@ def _install_redis_vector(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_redis_vector_store_reuses_collection_state_and_filters_archived_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    redis_vector_store._BACKENDS.clear()
     _install_redis_vector(monkeypatch)
 
     store = RedisVectorStore("redis://localhost:6379/0?collection=cellin_vectors")
@@ -1069,6 +1070,27 @@ def test_redis_vector_store_reuses_collection_state_and_filters_archived_rows(
     assert "memory-2" not in memory_ids
 
 
+def test_redis_vector_store_scopes_backend_cache_by_host_and_reuses_same_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    redis_vector_store._BACKENDS.clear()
+    _install_redis_vector(monkeypatch)
+
+    primary_url = "redis://host-a:6379/0?collection=cellin_vectors"
+    secondary_url = "redis://host-b:6379/0?collection=cellin_vectors"
+
+    primary = RedisVectorStore(primary_url)
+    primary_peer = RedisVectorStore(primary_url)
+    secondary = RedisVectorStore(secondary_url)
+
+    assert primary._backend is primary_peer._backend
+    assert primary._backend is not secondary._backend
+    assert set(redis_vector_store._BACKENDS) == {
+        (primary_url, "cellin:0", "cellin_vectors"),
+        (secondary_url, "cellin:0", "cellin_vectors"),
+    }
+
+
 def test_redis_backend_normalization_default_collection_and_zero_limit() -> None:
     namespace, collection = redis_vector_store._parse_namespace("redis://localhost:6379/0")
     assert namespace == "cellin:0"
@@ -1078,6 +1100,7 @@ def test_redis_backend_normalization_default_collection_and_zero_limit() -> None
 def test_redis_vector_store_handles_invalid_payloads_and_missing_vectors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    redis_vector_store._BACKENDS.clear()
     _install_redis_vector(monkeypatch)
 
     store = RedisVectorStore("redis://localhost:6379/0?collection=cellin_vectors")
@@ -1100,6 +1123,7 @@ def test_redis_vector_store_handles_invalid_payloads_and_missing_vectors(
 def test_redis_vector_store_escapes_pattern_characters_in_collection_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    redis_vector_store._BACKENDS.clear()
     _install_redis_vector(monkeypatch)
 
     store = RedisVectorStore("redis://localhost:6379/0?collection=cell[in]?*v")
@@ -1122,6 +1146,7 @@ def test_redis_escape_scan_match() -> None:
 def test_redis_vector_store_does_not_remarshal_collection_initialization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    redis_vector_store._BACKENDS.clear()
     _install_redis_vector(monkeypatch)
     store = RedisVectorStore("redis://localhost:6379/0?collection=cellin_vectors")
     store._backend._initialize_collection()
