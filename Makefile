@@ -2,8 +2,11 @@ UV ?= python3 -m uv
 TAG ?=
 EXPECT_VERSION ?=
 RELEASE_KIND ?= any
+DOCKER_IMAGE ?= cellin-mcp:latest
+CELLIN_BACKEND ?= sqlite
+CELLIN_DATA_DIR ?= /data
 
-.PHONY: bootstrap hooks fmt fmt-check lint typecheck test coverage eval-smoke eval-full eval package package-smoke version-check release-smoke verify ci docs feature-flag feature-registry-check
+.PHONY: bootstrap hooks fmt fmt-check lint typecheck test coverage eval-smoke eval-full eval package package-smoke version-check release-smoke verify ci docs feature-flag feature-registry-check docker-build docker-run
 
 bootstrap:
 	$(UV) sync --dev
@@ -18,6 +21,17 @@ feature-flag:
 
 feature-registry-check:
 	$(UV) run python scripts/check_feature_registry.py
+
+docker-build:
+	docker build -t $(DOCKER_IMAGE) .
+
+docker-run:
+	docker run -i --rm \
+		-v cellin-data:/data \
+		-e CELLIN_BACKEND=$(CELLIN_BACKEND) \
+		-e CELLIN_DATA_DIR=$(CELLIN_DATA_DIR) \
+		$(if $(CELLIN_CONNECTION_STRING),-e CELLIN_CONNECTION_STRING="$(CELLIN_CONNECTION_STRING)",) \
+		$(DOCKER_IMAGE)
 
 fmt:
 	$(UV) run ruff format src tests docs scripts

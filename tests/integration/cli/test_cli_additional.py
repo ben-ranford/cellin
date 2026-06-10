@@ -206,3 +206,19 @@ def test_cli_mcp_serve_check_reports_startup_status(
     assert payload["status"] == "ok"
     assert payload["workspace_root"] == str(tmp_path.resolve())
     assert payload["data_directory"] == str((tmp_path / "subjects").resolve())
+
+
+def test_cli_mcp_serve_check_uses_env_data_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: CaptureFixture[str],
+) -> None:
+    data_dir = tmp_path / "env-data"
+    monkeypatch.setenv("CELLIN_BACKEND", "in_memory")
+    monkeypatch.setenv("CELLIN_DATA_DIR", str(data_dir))
+
+    assert main(["mcp", "serve", "--workspace-root", str(tmp_path), "--check"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["data_directory"] == str(data_dir.resolve())

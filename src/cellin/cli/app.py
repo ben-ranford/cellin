@@ -27,6 +27,7 @@ from cellin.dreaming.models import DreamDiff
 from cellin.evals import run_evaluation_suite
 from cellin.features import REGISTRY, ReleaseChannel, resolve_features
 from cellin.ingest import ArtifactEnvelope, CanonicalIngestor
+from cellin.mcp.config import storage_config_from_env
 from cellin.mcp.server import serve_stdio, startup_check
 from cellin.mcp.subjects import SubjectRegistry
 from cellin.ranking import WeightedRanker, get_weight_profile
@@ -473,6 +474,7 @@ def _mcp_subject_registry(args: argparse.Namespace) -> SubjectRegistry:
     if args.config is None:
         return SubjectRegistry(
             workspace_root=Path(args.workspace_root),
+            storage_config=storage_config_from_env(),
             data_directory=Path(args.data_dir),
         )
 
@@ -573,7 +575,7 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command", required=True)
     mcp_serve_parser = mcp_subparsers.add_parser("serve")
     mcp_serve_parser.add_argument("--workspace-root", default=".")
-    mcp_serve_parser.add_argument("--data-dir", default="data")
+    mcp_serve_parser.add_argument("--data-dir", default=os.getenv("CELLIN_DATA_DIR", "data"))
     mcp_serve_parser.add_argument("--config")
     mcp_serve_parser.add_argument("--check", action="store_true")
     mcp_serve_parser.set_defaults(handler=cmd_mcp_serve)
