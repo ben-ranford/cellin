@@ -152,7 +152,16 @@ def test_load_release_lock_parses_and_validates_registry_codes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     lock_path = tmp_path / "features.release.lock.json"
-    lock_path.write_text(json.dumps({"features": ["preview_search"]}), encoding="utf-8")
+    lock_path.write_text(
+        json.dumps(
+            {
+                "release": "v0.4.0",
+                "defaultOn": ["preview_search"],
+                "notes": {"preview_search": "Hold preview on during rollout."},
+            }
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(resolver_module, "REGISTRY", TEST_REGISTRY)
 
     assert load_release_lock(lock_path) == {"preview_search": True}
@@ -162,10 +171,16 @@ def test_load_release_lock_parses_and_validates_registry_codes(
     ("payload", "message"),
     (
         ([], "JSON object"),
-        ({"features": "preview_search"}, "`features` list"),
-        ({"features": ["preview_search", "preview_search"]}, "duplicate feature codes"),
-        ({"features": [""]}, "non-empty strings"),
-        ({"features": [7]}, "non-empty strings"),
+        (
+            {"release": None, "defaultOn": "preview_search", "notes": {}},
+            "`defaultOn` list",
+        ),
+        (
+            {"release": None, "defaultOn": ["preview_search", "preview_search"], "notes": {}},
+            "duplicate feature codes",
+        ),
+        ({"release": None, "defaultOn": [""], "notes": {}}, "non-empty strings"),
+        ({"release": None, "defaultOn": [7], "notes": {}}, "non-empty strings"),
     ),
 )
 def test_load_release_lock_rejects_malformed_payloads(
@@ -186,7 +201,10 @@ def test_load_release_lock_rejects_unknown_registry_codes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     lock_path = tmp_path / "features.release.lock.json"
-    lock_path.write_text(json.dumps({"features": ["unknown_code"]}), encoding="utf-8")
+    lock_path.write_text(
+        json.dumps({"release": None, "defaultOn": ["unknown_code"], "notes": {}}),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(resolver_module, "REGISTRY", TEST_REGISTRY)
 
     with pytest.raises(ValueError, match="Unknown feature lock codes"):
@@ -197,11 +215,67 @@ def test_load_release_lock_rejects_non_preview_registry_codes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     lock_path = tmp_path / "features.release.lock.json"
-    lock_path.write_text(json.dumps({"features": ["stable_cache"]}), encoding="utf-8")
+    lock_path.write_text(
+        json.dumps({"release": None, "defaultOn": ["stable_cache"], "notes": {}}),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(resolver_module, "REGISTRY", TEST_REGISTRY)
 
     with pytest.raises(ValueError, match="only enable preview features"):
         load_release_lock(lock_path)
+
+
+def test_load_release_lock_rejects_unknown_top_level_keys(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    lock_path = tmp_path / "features.release.lock.json"
+    lock_path.write_text(
+        json.dumps(
+            {
+                "release": None,
+                "defaultOn": ["preview_search"],
+                "notes": {},
+                "features": ["preview_search"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(resolver_module, "REGISTRY", TEST_REGISTRY)
+
+    with pytest.raises(ValueError, match="unknown keys"):
+        load_release_lock(lock_path)
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ([], "JSON object"),
+        ({"defaultOn": [], "notes": {}}, "missing keys: release"),
+        ({"release": 42, "defaultOn": [], "notes": {}}, "`release` must be a string"),
+        ({"release": None, "defaultOn": "preview_search", "notes": {}}, "`defaultOn` list"),
+        ({"release": None, "defaultOn": [""], "notes": {}}, "non-empty strings"),
+        ({"release": None, "defaultOn": [7], "notes": {}}, "non-empty strings"),
+        (
+            {"release": None, "defaultOn": ["preview_search", "preview_search"], "notes": {}},
+            "duplicate feature codes",
+        ),
+        ({"release": None, "defaultOn": [], "notes": []}, "`notes` must be a JSON object"),
+        (
+            {"release": None, "defaultOn": [], "notes": {"": "missing code"}},
+            "note keys must be non-empty strings",
+        ),
+        (
+            {"release": None, "defaultOn": [], "notes": {"preview_search": 7}},
+            "note values must be strings",
+        ),
+    ),
+)
+def test_parse_release_lock_document_rejects_malformed_payloads(
+    payload: object,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        resolver_module.parse_release_lock_document(payload, registry=TEST_REGISTRY)
 
 
 @pytest.mark.parametrize(

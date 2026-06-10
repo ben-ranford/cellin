@@ -36,6 +36,15 @@ jobs:
       - name: Sync dependencies
         run: python -m uv sync --dev --frozen
 
+      - name: Validate feature release lock
+        run: |
+          python -m uv run python - <<'PY'
+          from cellin.features.resolver import read_release_lock_document
+
+          document = read_release_lock_document("features.release.lock.json")
+          print(f"validated_feature_lock={len(document['defaultOn'])}")
+          PY
+
       - name: Run CI target (verify + docs + version-check)
         run: make ci
 
