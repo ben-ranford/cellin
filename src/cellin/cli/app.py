@@ -435,12 +435,7 @@ def cmd_trace_inspect(args: argparse.Namespace, _feature_context: FeatureContext
     return TRACE_INSPECT_SUCCESS_EXIT_CODE
 
 
-def cmd_features_list(args: argparse.Namespace, feature_context: FeatureContext) -> int:
-    rows = _feature_manifest_defaults(feature_context.channel)
-    if args.format == "json":
-        print(json.dumps(rows, indent=2, sort_keys=True))
-        return 0
-
+def _print_feature_table(rows: list[dict[str, object]]) -> None:
     code_width = max((len(str(row["code"])) for row in rows), default=4)
     name_width = max((len(str(row["name"])) for row in rows), default=4)
     lifecycle_width = max((len(str(row["lifecycle"])) for row in rows), default=9)
@@ -467,7 +462,14 @@ def cmd_features_list(args: argparse.Namespace, feature_context: FeatureContext)
             f"{row['lifecycle']:<{lifecycle_width}} "
             f"{default_value:<{default_width}}"
         )
-    return 0
+
+
+def cmd_features_list(args: argparse.Namespace, feature_context: FeatureContext) -> None:
+    rows = _feature_manifest_defaults(feature_context.channel)
+    if args.format == "json":
+        print(json.dumps(rows, indent=2, sort_keys=True))
+    else:
+        _print_feature_table(rows)
 
 
 def _mcp_subject_registry(args: argparse.Namespace) -> SubjectRegistry:

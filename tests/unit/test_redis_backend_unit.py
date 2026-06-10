@@ -105,7 +105,7 @@ def test_neighbors_returns_correct_edges_without_scan() -> None:
 
     result = backend.neighbors("memory-x")
 
-    assert set(e.edge_id for e in result) == {"edge-src", "edge-tgt"}
+    assert {e.edge_id for e in result} == {"edge-src", "edge-tgt"}
 
     # SCAN must NOT have been called during neighbors()
     scan_calls = [c for c in fake.calls if c[0] == "scan_iter"]

@@ -117,21 +117,28 @@ def list_stable_tags(repo_root: Path) -> list[str]:
     return [tag for tag in tags if _STABLE_TAG_PATTERN.match(tag)]
 
 
+def _assigned_name_value(node: ast.Assign, name: str) -> ast.expr | None:
+    for target in node.targets:
+        if isinstance(target, ast.Name) and target.id == name:
+            return node.value
+    return None
+
+
+def _registry_assignment_value(node: ast.stmt) -> ast.expr | None:
+    if (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "REGISTRY"
+    ):
+        return node.value
+    if isinstance(node, ast.Assign):
+        return _assigned_name_value(node, "REGISTRY")
+    return None
+
+
 def _find_registry_tuple(module: ast.Module) -> ast.Tuple:
     for node in module.body:
-        value: ast.expr | None = None
-        if (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == "REGISTRY"
-        ):
-            value = node.value
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "REGISTRY":
-                    value = node.value
-                    break
-
+        value = _registry_assignment_value(node)
         if value is None:
             continue
         if not isinstance(value, ast.Tuple):

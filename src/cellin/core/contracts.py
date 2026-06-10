@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from cellin.core.models import (
     Artifact,
@@ -80,7 +80,7 @@ class PluginContext:
 class Plugin(Protocol):
     """Lifecycle hooks required for every Cellin plugin."""
 
-    manifest: PluginManifest
+    manifest: ClassVar[PluginManifest]
 
     def configure(self, context: PluginContext) -> None:
         """Configure the plugin with runtime state."""

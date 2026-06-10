@@ -336,36 +336,35 @@ def _run_performance_case() -> EvaluationCaseResult:
 def _suite_cases(
     suite: str, *, storage_config: StorageConfig | None = None
 ) -> tuple[EvaluationCaseResult, ...]:
-    if suite == "smoke":
-        return (
-            _run_ingest_case(storage_config),
-            _run_retrieval_case(
-                benchmark_index=0,
-                corpus_name="project_memory",
-                case_id="retrieval-project",
-            ),
-            _run_dream_case(),
-        )
+    cases = [
+        _run_ingest_case(storage_config),
+        _run_retrieval_case(
+            benchmark_index=0,
+            corpus_name="project_memory",
+            case_id="retrieval-project",
+        ),
+        _run_dream_case(),
+    ]
 
     if suite == "full":
-        return (
-            _run_ingest_case(storage_config),
-            _run_retrieval_case(
-                benchmark_index=0,
-                corpus_name="project_memory",
-                case_id="retrieval-project",
-            ),
+        cases.insert(
+            2,
             _run_retrieval_case(
                 benchmark_index=1,
                 corpus_name="recency_trap",
                 case_id="retrieval-recency",
             ),
-            _run_dream_case(),
-            _run_contradiction_case(),
-            _run_performance_case(),
         )
+        cases.extend(
+            [
+                _run_contradiction_case(),
+                _run_performance_case(),
+            ]
+        )
+    elif suite != "smoke":
+        raise ValueError(f"Unknown eval suite: {suite}")
 
-    raise ValueError(f"Unknown eval suite: {suite}")
+    return tuple(cases)
 
 
 def write_report(report: EvaluationReport, output_path: Path) -> None:
