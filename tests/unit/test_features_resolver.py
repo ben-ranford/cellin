@@ -113,6 +113,21 @@ def test_unknown_feature_names_are_rejected() -> None:
         resolve_features(TEST_REGISTRY, "release", {}, ("unknown-feature",), ())
 
 
+def test_ambiguous_feature_names_are_rejected() -> None:
+    registry = (
+        *TEST_REGISTRY,
+        FeatureFlag(
+            code="preview_search_v2",
+            name="preview-search",
+            description="Second preview search",
+            lifecycle="done",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Feature names are ambiguous: preview-search"):
+        resolve_features(registry, "release", {}, ("preview-search",), ())
+
+
 def test_conflicting_feature_names_are_rejected() -> None:
     with pytest.raises(ValueError, match="both enabled and disabled"):
         resolve_features(TEST_REGISTRY, "release", {}, ("preview-search",), ("preview-search",))
@@ -141,6 +156,30 @@ def test_load_release_lock_parses_and_validates_registry_codes(
     monkeypatch.setattr(resolver_module, "REGISTRY", TEST_REGISTRY)
 
     assert load_release_lock(lock_path) == {"preview_search": True}
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        ([], "JSON object"),
+        ({"features": "preview_search"}, "`features` list"),
+        ({"features": ["preview_search", "preview_search"]}, "duplicate feature codes"),
+        ({"features": [""]}, "non-empty strings"),
+        ({"features": [7]}, "non-empty strings"),
+    ),
+)
+def test_load_release_lock_rejects_malformed_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    payload: object,
+    message: str,
+) -> None:
+    lock_path = tmp_path / "features.release.lock.json"
+    lock_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(resolver_module, "REGISTRY", TEST_REGISTRY)
+
+    with pytest.raises(ValueError, match=message):
+        load_release_lock(lock_path)
 
 
 def test_load_release_lock_rejects_unknown_registry_codes(

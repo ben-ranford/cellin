@@ -10,6 +10,7 @@ from pathlib import Path
 
 from cellin.core import TraceEvent
 from cellin.core.models import JSONValue
+from cellin.features.registry import REGISTRY, validate_registry
 from cellin.runtime.storage import StorageBackendConfig, StorageConfig
 
 DEFAULT_CONFIG_FILENAME = "cellin.json"
@@ -28,6 +29,15 @@ class WorkspaceConfig:
     profile_name: str = DEFAULT_PROFILE_NAME
     database_path: str | None = None
     storage: StorageConfig | None = None
+    features: WorkspaceFeaturesConfig | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceFeaturesConfig:
+    """Serializable feature activation config."""
+
+    enable: tuple[str, ...] = ()
+    disable: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,10 +49,71 @@ class ResolvedWorkspace:
     storage: StorageConfig
     trace_path: Path
     profile_name: str
+    features: WorkspaceFeaturesConfig
 
 
 def _as_str(value: object, default: str) -> str:
     return value if isinstance(value, str) else default
+
+
+def _coerce_feature_name_list(field: str, raw: object) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError(f"`features.{field}` must be a list.")
+
+    values: list[str] = []
+    for entry in raw:
+        if not isinstance(entry, str) or not entry:
+            raise ValueError(f"`features.{field}` entries must be non-empty strings.")
+        values.append(entry)
+    return tuple(values)
+
+
+def _validate_feature_activation(enable: tuple[str, ...], disable: tuple[str, ...]) -> None:
+    validate_registry(REGISTRY)
+
+    names_to_codes: dict[str, list[str]] = {}
+    for feature in REGISTRY:
+        names_to_codes.setdefault(feature.name, []).append(feature.code)
+
+    enabled_names = set(enable)
+    disabled_names = set(disable)
+    known_names = set(names_to_codes)
+
+    unknown_names = sorted((enabled_names | disabled_names) - known_names)
+    if unknown_names:
+        raise ValueError(f"Unknown feature names: {', '.join(unknown_names)}")
+
+    conflicts = sorted(enabled_names & disabled_names)
+    if conflicts:
+        raise ValueError(
+            f"Feature names cannot be both enabled and disabled: {', '.join(conflicts)}"
+        )
+
+    ambiguous_names = sorted(
+        name for name in (enabled_names | disabled_names) if len(names_to_codes[name]) > 1
+    )
+    if ambiguous_names:
+        raise ValueError(f"Feature names are ambiguous: {', '.join(ambiguous_names)}")
+
+
+def _coerce_features_config(raw_config: object) -> WorkspaceFeaturesConfig:
+    if raw_config is None:
+        return WorkspaceFeaturesConfig()
+    if not isinstance(raw_config, Mapping):
+        raise ValueError("`features` must be an object.")
+
+    unknown_keys = sorted(set(raw_config) - {"enable", "disable"})
+    if unknown_keys:
+        raise ValueError(f"`features` contains unknown keys: {', '.join(unknown_keys)}")
+
+    features = WorkspaceFeaturesConfig(
+        enable=_coerce_feature_name_list("enable", raw_config.get("enable")),
+        disable=_coerce_feature_name_list("disable", raw_config.get("disable")),
+    )
+    _validate_feature_activation(features.enable, features.disable)
+    return features
 
 
 def _coerce_storage_role(
@@ -135,6 +206,7 @@ def init_workspace(target: Path) -> Path:
         )
         payload = asdict(defaults)
         payload.pop("database_path", None)
+        payload.pop("features", None)
         config_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return config_path
 
@@ -147,6 +219,7 @@ def load_workspace(config_path: Path) -> ResolvedWorkspace:
         raise ValueError("Workspace config must be a JSON object.")
 
     storage = _coerce_storage_config(raw)
+    features = _coerce_features_config(raw.get("features"))
 
     return ResolvedWorkspace(
         config_path=config_path,
@@ -156,6 +229,7 @@ def load_workspace(config_path: Path) -> ResolvedWorkspace:
             config_path.parent / _as_str(raw.get("trace_path"), default=DEFAULT_TRACE_FILENAME)
         ).resolve(),
         profile_name=_as_str(raw.get("profile_name"), default=DEFAULT_PROFILE_NAME),
+        features=features,
     )
 
 
