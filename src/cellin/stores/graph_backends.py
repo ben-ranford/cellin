@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import chain
 from typing import Protocol, cast
@@ -86,6 +87,9 @@ class _ArangoDatabase(Protocol):
     def create_collection(self, name: str, *, edge: bool = False) -> object: ...
 
     def collection(self, name: str) -> _ArangoCollection: ...
+
+
+type _ArangoFindCallable = Callable[..., Iterable[dict[str, object]]]
 
 
 class _MissingNeo4jDependencyError(RuntimeError):
@@ -262,12 +266,9 @@ class _ArangoGraphBackend:
 
     def _find_edge_documents_with_finder(
         self,
-        finder: object,
+        finder: _ArangoFindCallable,
         filters: dict[str, object] | None,
     ) -> list[dict[str, object]] | None:
-        if not callable(finder):
-            return None
-
         try:
             return list(finder()) if filters is None else list(finder(filters))
         except TypeError:
@@ -277,10 +278,10 @@ class _ArangoGraphBackend:
 
     def _find_edge_documents_with_keyword_filters(
         self,
-        finder: object,
+        finder: _ArangoFindCallable,
         filters: dict[str, object] | None,
     ) -> list[dict[str, object]] | None:
-        if filters is None or not callable(finder):
+        if filters is None:
             return None
         try:
             return list(finder(filters=filters))
@@ -297,12 +298,14 @@ class _ArangoGraphBackend:
     def _find_edge_documents(
         self, filters: dict[str, object] | None = None
     ) -> list[dict[str, object]]:
-        documents = self._find_edge_documents_with_finder(
-            getattr(self._edge_collection, "find", None),
-            filters,
-        )
-        if documents is not None:
-            return documents
+        finder = getattr(self._edge_collection, "find", None)
+        if callable(finder):
+            documents = self._find_edge_documents_with_finder(
+                cast(_ArangoFindCallable, finder),
+                filters,
+            )
+            if documents is not None:
+                return documents
 
         edges = self._edge_collection.all()
         if not filters:
