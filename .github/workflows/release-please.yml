@@ -28,9 +28,102 @@ jobs:
 
       - name: Run release-please
         if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        id: release
         uses: googleapis/release-please-action@v5
         with:
           token: ${{ env.RELEASE_PLEASE_TOKEN }}
           target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - name: Checkout
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Install uv
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        run: python -m pip install uv
+
+      - name: Sync dependencies
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        run: python -m uv sync --dev --frozen
+
+      - name: Update release PR feature flag report
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ env.RELEASE_PLEASE_TOKEN }}
+          PR_JSON: ${{ steps.release.outputs.pr }}
+        shell: bash
+        run: |
+          report_file="$(mktemp)"
+          python -m uv run python scripts/generate_feature_report.py \
+            --channel release \
+            --lock features.release.lock.json > "${report_file}"
+
+          if [ -z "${PR_JSON}" ] || [ "${PR_JSON}" = "null" ]; then
+            echo "No release PR created or updated; skipping feature flag report."
+            exit 0
+          fi
+
+          pr_number="$(python - <<'PY'
+          import json
+          import os
+
+          payload = os.environ.get("PR_JSON", "").strip()
+          if not payload or payload == "null":
+              raise SystemExit(0)
+
+          data = json.loads(payload)
+          number = data.get("number")
+          if not isinstance(number, int):
+              raise SystemExit(0)
+
+          print(number)
+          PY
+          )"
+
+          if [ -z "${pr_number}" ]; then
+            echo "Release Please did not return a release PR number; skipping feature flag report."
+            exit 0
+          fi
+
+          body_file="$(mktemp)"
+          gh pr view "${pr_number}" --json body --jq .body > "${body_file}"
+
+          python - "${body_file}" "${report_file}" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          body_path = Path(sys.argv[1])
+          report_path = Path(sys.argv[2])
+          start_marker = "<!-- cellin-feature-flags:start -->"
+          end_marker = "<!-- cellin-feature-flags:end -->"
+          report_block = (
+              f"{start_marker}\n{report_path.read_text(encoding='utf-8').rstrip()}\n{end_marker}"
+          )
+          body = body_path.read_text(encoding="utf-8")
+          pattern = re.compile(
+              r"<!-- cellin-feature-flags:start -->.*?<!-- cellin-feature-flags:end -->",
+              re.DOTALL,
+          )
+
+          if pattern.search(body):
+              updated = pattern.sub(report_block, body).strip()
+          elif body.strip():
+              updated = f"{body.rstrip()}\n\n{report_block}"
+          else:
+              updated = report_block
+
+          body_path.write_text(f"{updated}\n", encoding="utf-8")
+          PY
+
+          gh pr edit "${pr_number}" --body-file "${body_file}"

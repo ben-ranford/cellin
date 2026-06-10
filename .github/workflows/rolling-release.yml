@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      CELLIN_RELEASE_CHANNEL: rolling
     outputs:
       package_version: ${{ steps.version.outputs.package_version }}
 
