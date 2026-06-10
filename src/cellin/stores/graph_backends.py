@@ -7,7 +7,7 @@ from itertools import chain
 from typing import Protocol, cast
 from urllib.parse import quote, urlparse
 
-from cellin.core import GraphStore, MemoryAtom, MemoryEdge
+from cellin.core import GraphStore, MemoryAtom, MemoryEdge, MemoryStore
 from cellin.stores._graph_serialization import (
     dump_edge,
     dump_memory,
@@ -134,6 +134,11 @@ def _arangodb_key(value: str) -> str:
     return quote(value, safe="")
 
 
+def _backend_share_targets(memory_store: MemoryStore) -> tuple[object, object | None]:
+    memory_backend = getattr(memory_store, "_backend", None)
+    return (memory_store, memory_backend)
+
+
 class _CypherGraphBackend:
     """Shared Neo4j/Memgraph graph operations."""
 
@@ -156,6 +161,8 @@ class _CypherGraphBackend:
         if parsed.username is not None:
             auth = (parsed.username, parsed.password or "")
 
+        self._backend_url = uri
+        self._connection_identity = (uri, auth)
         self._driver = cast(_Neo4jDriver, GraphDatabase.driver(uri, auth=auth))
         self._ensure_schema()
 
@@ -206,6 +213,18 @@ class _CypherGraphBackend:
             if (edge := load_edge(cast(str, row["payload"]))) and not edge_is_archived(edge)
         )
 
+    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
+        for target in _backend_share_targets(memory_store):
+            if target is self:
+                return True
+            if getattr(target, "_driver", None) is self._driver:
+                return True
+            if getattr(target, "_connection_identity", None) == self._connection_identity:
+                return True
+            if getattr(target, "_backend_url", None) == self._backend_url:
+                return True
+        return False
+
 
 class _ArangoGraphBackend:
     """ArangoDB graph operations using document and edge collections."""
@@ -228,6 +247,8 @@ class _ArangoGraphBackend:
                 password=connection.password,
             ),
         )
+        self._connection_info = connection
+        self._connection_identity = connection
         self._database = database
         self._ensure_collections()
         self._memory_collection = database.collection("cellin_memories")
@@ -352,6 +373,18 @@ class _ArangoGraphBackend:
                 edges.append(edge)
         return tuple(sorted(edges, key=lambda edge: edge.edge_id))
 
+    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
+        for target in _backend_share_targets(memory_store):
+            if target is self:
+                return True
+            if getattr(target, "_database", None) is self._database:
+                return True
+            if getattr(target, "_connection_identity", None) == self._connection_identity:
+                return True
+            if getattr(target, "_connection_info", None) == self._connection_info:
+                return True
+        return False
+
 
 _NEO4J_BACKENDS: dict[str, _CypherGraphBackend] = {}
 _MEMGRAPH_BACKENDS: dict[str, _CypherGraphBackend] = {}
@@ -388,6 +421,7 @@ class _GraphBackend(Protocol):
     def get_memory(self, memory_id: str) -> MemoryAtom | None: ...
     def neighbors(self, memory_id: str) -> tuple[MemoryEdge, ...]: ...
     def list_edges(self) -> tuple[MemoryEdge, ...]: ...
+    def shares_memory_store(self, memory_store: MemoryStore) -> bool: ...
 
 
 class _BackendGraphStore(GraphStore):
@@ -408,6 +442,12 @@ class _BackendGraphStore(GraphStore):
     def upsert_edges(self, edges: tuple[MemoryEdge, ...]) -> None:
         for edge in edges:
             self._backend.upsert_edge(edge)
+
+    def shares_memory_store(self, memory_store: MemoryStore) -> bool:
+        shares_memory_store = getattr(self._backend, "shares_memory_store", None)
+        if callable(shares_memory_store):
+            return bool(shares_memory_store(memory_store))
+        return getattr(memory_store, "_backend", None) is self._backend
 
     def get_memory(self, memory_id: str) -> MemoryAtom | None:
         return self._backend.get_memory(memory_id)

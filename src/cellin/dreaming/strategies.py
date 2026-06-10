@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import cast
@@ -20,7 +21,7 @@ from cellin.core import (
 )
 from cellin.core.models import JSONValue
 from cellin.dreaming.models import DreamDiff, DreamEdgeChange, DreamMemoryChange, DreamRunResult
-from cellin.stores.vector_utils import _tokenize
+from cellin.stores.vector_utils import tokenize
 
 NEGATION_MARKERS = {
     "cancelled",
@@ -36,16 +37,16 @@ SUCCESS_MARKERS = {"completed", "green", "released", "shipped", "stable", "activ
 
 
 def _similarity(left: MemoryAtom, right: MemoryAtom) -> float:
-    left_tokens = set(_tokenize(left.text))
-    right_tokens = set(_tokenize(right.text))
+    left_tokens = tokenize(left.text)
+    right_tokens = tokenize(right.text)
     if not left_tokens or not right_tokens:
         return 0.0
     return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
 
 
 def _contains_conflict(left: MemoryAtom, right: MemoryAtom) -> bool:
-    left_tokens = set(_tokenize(left.text))
-    right_tokens = set(_tokenize(right.text))
+    left_tokens = tokenize(left.text)
+    right_tokens = tokenize(right.text)
     left_negative = bool(left_tokens & NEGATION_MARKERS)
     right_negative = bool(right_tokens & NEGATION_MARKERS)
     left_positive = bool(left_tokens & SUCCESS_MARKERS)
@@ -93,8 +94,12 @@ def _string_list(value: JSONValue) -> list[str]:
 
 
 def _group_active_memories_by_topic(memory_store: MemoryStore) -> dict[str, list[MemoryAtom]]:
+    return _group_memories_by_topic(memory_store.list_by(archived=False))
+
+
+def _group_memories_by_topic(memories: Sequence[MemoryAtom]) -> dict[str, list[MemoryAtom]]:
     topic_groups: dict[str, list[MemoryAtom]] = defaultdict(list)
-    for memory in memory_store.list_by(archived=False):
+    for memory in memories:
         topic = memory.metadata.get("topic")
         if isinstance(topic, str):
             topic_groups[topic].append(memory)
@@ -144,13 +149,23 @@ def _apply_memory_updates(
     before_after: tuple[tuple[MemoryAtom, MemoryAtom], ...],
 ) -> list[DreamMemoryChange]:
     changes: list[DreamMemoryChange] = []
+    should_upsert_graph_memory = _graph_requires_memory_upserts(
+        graph_store=graph_store,
+        memory_store=memory_store,
+    )
     for before, after in before_after:
         memory_store.put(after)
-        _shares = getattr(graph_store, "shares_memory_store", None)
-        if not callable(_shares) or not _shares(memory_store):
+        if should_upsert_graph_memory:
             graph_store.upsert_memory(after)
         changes.append(DreamMemoryChange(before.memory_id, before, after))
     return changes
+
+
+def _graph_requires_memory_upserts(*, graph_store: GraphStore, memory_store: MemoryStore) -> bool:
+    shares_memory_store = getattr(graph_store, "shares_memory_store", None)
+    if callable(shares_memory_store):
+        return not bool(shares_memory_store(memory_store))
+    return True
 
 
 @dataclass(slots=True)
@@ -180,10 +195,12 @@ class DeduplicationDreamStrategy:
     ) -> DreamRunResult | None:
         when = at or datetime.now(UTC)
         outcome = _MutationOutcome.empty()
-        topic_groups = _group_active_memories_by_topic(memory_store)
-        memory_index: dict[str, MemoryAtom] = {
-            m.memory_id: m for members in topic_groups.values() for m in members
-        }
+        active_memories = tuple(
+            memory for memory in memory_store.list() if not memory.decay.archived
+        )
+        topic_groups = _group_memories_by_topic(active_memories)
+        # Each pair resolves current state from this index in O(1) without extra store.get() I/O.
+        memory_index = {memory.memory_id: memory for memory in active_memories}
         for members in topic_groups.values():
             self._merge_topic_members(
                 members=members,

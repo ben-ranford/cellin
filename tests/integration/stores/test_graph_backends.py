@@ -273,6 +273,86 @@ def test_graph_native_backends_filter_archived_edges_and_share_state(
     assert graph_store.list_edges() == (active,)
 
 
+@pytest.mark.parametrize(
+    "graph_cls,connection_string,install_backend,clear_backends",
+    [
+        (
+            Neo4jGraphStore,
+            "bolt://neo4j:test@localhost:7687",
+            _install_fake_neo4j,
+            graph_backends._NEO4J_BACKENDS.clear,
+        ),
+        (
+            MemgraphGraphStore,
+            "bolt://memgraph:test@localhost:7687",
+            _install_fake_neo4j,
+            graph_backends._MEMGRAPH_BACKENDS.clear,
+        ),
+        (
+            ArangoDBGraphStore,
+            "arangodb://root:test@localhost:8529/cellin",
+            _install_fake_arango,
+            graph_backends._ARANGO_BACKENDS.clear,
+        ),
+    ],
+)
+def test_graph_native_backends_detect_shared_memory_store_identity(
+    graph_cls: type,
+    connection_string: str,
+    install_backend: Callable[[pytest.MonkeyPatch], None],
+    clear_backends: Callable[[], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_backends()
+    install_backend(monkeypatch)
+
+    graph_store = graph_cls(connection_string)
+    backend = graph_store._backend
+
+    if isinstance(graph_store, ArangoDBGraphStore):
+        shared_memory_store = type(
+            "_SharedArangoMemoryStore",
+            (),
+            {
+                "_database": backend._database,
+                "_connection_info": backend._connection_info,
+            },
+        )()
+        separate_memory_store = type(
+            "_SeparateArangoMemoryStore",
+            (),
+            {
+                "_database": object(),
+                "_connection_info": graph_backends._ArangoConnectionInfo(
+                    "https://other:8529",
+                    "other",
+                    "root",
+                    "test",
+                ),
+            },
+        )()
+    else:
+        shared_memory_store = type(
+            "_SharedCypherMemoryStore",
+            (),
+            {
+                "_driver": backend._driver,
+                "_backend_url": backend._backend_url,
+            },
+        )()
+        separate_memory_store = type(
+            "_SeparateCypherMemoryStore",
+            (),
+            {
+                "_driver": object(),
+                "_backend_url": "bolt://other:7687",
+            },
+        )()
+
+    assert graph_store.shares_memory_store(shared_memory_store)
+    assert not graph_store.shares_memory_store(separate_memory_store)
+
+
 def test_arangodb_backend_encodes_memory_ids_in_document_handles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -163,6 +163,40 @@ def test_deduplication_skips_members_archived_earlier_in_same_run() -> None:
     assert outcome.pairs == [("duplicate", "canonical")]
 
 
+def test_deduplication_uses_prebuilt_index_without_store_gets() -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    canonical = _memory("canonical", "atlas alpha beta", topic="atlas", observed_at=now, trust=1.0)
+    duplicate = _memory("duplicate", "atlas alpha beta", topic="atlas", observed_at=now, trust=0.9)
+
+    class _CountingMemoryStore(InMemoryMemoryStore):
+        def __init__(self, memories: tuple[MemoryAtom, ...]) -> None:
+            super().__init__(memories)
+            self.get_calls = 0
+            self.list_calls = 0
+
+        def get(self, memory_id: str) -> MemoryAtom | None:
+            self.get_calls += 1
+            return super().get(memory_id)
+
+        def list(self) -> tuple[MemoryAtom, ...]:
+            self.list_calls += 1
+            return super().list()
+
+    memory_store = _CountingMemoryStore((canonical, duplicate))
+    graph_store = InMemoryGraphStore((canonical, duplicate))
+
+    result = DeduplicationDreamStrategy(similarity_threshold=0.5).execute(
+        graph_store,
+        memory_store,
+        at=now,
+    )
+
+    assert result is not None
+    assert memory_store.list_calls == 1
+    # Pair resolution stays O(1) via the prebuilt memory_index instead of store.get() I/O.
+    assert memory_store.get_calls == 0
+
+
 def test_contradiction_repair_skips_non_conflicts_and_existing_edges() -> None:
     now = datetime(2026, 4, 5, tzinfo=UTC)
     strategy = ContradictionRepairDreamStrategy()
@@ -260,6 +294,99 @@ def test_contradiction_repair_iterates_only_forward_unique_pairs() -> None:
     )
 
     assert calls == [("first", "second"), ("first", "third"), ("second", "third")]
+
+
+def test_contradiction_repair_applies_cumulative_decay_and_diff_snapshots() -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    older = _memory(
+        "atlas-green",
+        "Atlas rollout is green and stable in staging.",
+        topic="atlas-rollout",
+        observed_at=now,
+        trust=0.9,
+    )
+    newer_first = _memory(
+        "atlas-rollback",
+        "Atlas rollout was rolled back after failures in staging.",
+        topic="atlas-rollout",
+        observed_at=now.replace(day=6),
+        trust=0.9,
+    )
+    newer_second = _memory(
+        "atlas-disabled",
+        "Atlas rollout is not active in staging.",
+        topic="atlas-rollout",
+        observed_at=now.replace(day=7),
+        trust=0.9,
+    )
+    memory_store = InMemoryMemoryStore((older, newer_first, newer_second))
+    graph_store = InMemoryGraphStore((older, newer_first, newer_second))
+
+    result = ContradictionRepairDreamStrategy().execute(graph_store, memory_store, at=now)
+
+    assert result is not None
+    repaired_older = memory_store.get("atlas-green")
+    assert repaired_older is not None
+    assert repaired_older.trust_score == pytest.approx(0.4)
+
+    older_changes = [
+        change for change in result.diff.memory_changes if change.memory_id == older.memory_id
+    ]
+    assert len(older_changes) == 2
+    assert older_changes[0].before is not None
+    assert older_changes[0].after is not None
+    assert older_changes[0].before.trust_score == pytest.approx(0.9)
+    assert older_changes[0].after.trust_score == pytest.approx(0.65)
+    assert older_changes[1].before is not None
+    assert older_changes[1].after is not None
+    assert older_changes[1].before.trust_score == pytest.approx(0.65)
+    assert older_changes[1].after.trust_score == pytest.approx(0.4)
+
+
+@pytest.mark.parametrize(
+    ("shared_backend", "expected_graph_memory_upserts"),
+    [(True, 0), (False, 2)],
+)
+def test_contradiction_repair_respects_shared_graph_memory_backends(
+    shared_backend: bool,
+    expected_graph_memory_upserts: int,
+) -> None:
+    now = datetime(2026, 4, 5, tzinfo=UTC)
+    older = _memory(
+        "atlas-green",
+        "Atlas rollout is green and stable in staging.",
+        topic="atlas-rollout",
+        observed_at=now,
+    )
+    newer = _memory(
+        "atlas-rollback",
+        "Atlas rollout was rolled back after failures in staging.",
+        topic="atlas-rollout",
+        observed_at=now.replace(day=6),
+    )
+
+    class _CountingGraphStore(InMemoryGraphStore):
+        def __init__(self, memories: tuple[MemoryAtom, ...], *, shared: bool) -> None:
+            self.memory_upserts = 0
+            self._shared = shared
+            super().__init__(memories)
+            self.memory_upserts = 0
+
+        def shares_memory_store(self, memory_store: MemoryStore) -> bool:
+            del memory_store
+            return self._shared
+
+        def upsert_memory(self, memory: MemoryAtom) -> None:
+            self.memory_upserts += 1
+            super().upsert_memory(memory)
+
+    memory_store = InMemoryMemoryStore((older, newer))
+    graph_store = _CountingGraphStore((older, newer), shared=shared_backend)
+
+    result = ContradictionRepairDreamStrategy().execute(graph_store, memory_store, at=now)
+
+    assert result is not None
+    assert graph_store.memory_upserts == expected_graph_memory_upserts
 
 
 def test_abstraction_returns_none_when_topics_do_not_qualify() -> None:

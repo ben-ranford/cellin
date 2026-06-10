@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from cellin.core import GraphStore, MemoryAtom, MemoryEdge, MemoryStore, VectorStore
-from cellin.stores.vector_utils import _tokenize
+from cellin.stores.vector_utils import tokenize
 
 
 def _lexical_seed_score(query: str, memory: MemoryAtom) -> float:
-    query_tokens = set(_tokenize(query))
-    memory_tokens = set(_tokenize(memory.text))
+    query_tokens = tokenize(query)
+    memory_tokens = tokenize(memory.text)
     if not query_tokens or not memory_tokens:
         return 0.0
 
