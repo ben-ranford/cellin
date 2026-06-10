@@ -26,8 +26,21 @@ jobs:
         run: |
           echo "::warning::RELEASE_PLEASE_TOKEN is not configured. Stable release initiation remains disabled until the token is added."
 
-      - name: Run release-please
+      - name: Validate release token
+        id: validate_release_token
         if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ env.RELEASE_PLEASE_TOKEN }}
+        run: gh api user --jq .login >/dev/null
+
+      - name: Report invalid token
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' && steps.validate_release_token.outcome != 'success' }}
+        run: |
+          echo "::warning::RELEASE_PLEASE_TOKEN is configured, but GitHub rejected it. Stable release initiation remains disabled until the token is refreshed."
+
+      - name: Run release-please
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' && steps.validate_release_token.outcome == 'success' }}
         id: release
         uses: googleapis/release-please-action@v5
         with:
@@ -37,27 +50,27 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       - name: Checkout
-        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' && steps.validate_release_token.outcome == 'success' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' && steps.validate_release_token.outcome == 'success' }}
         uses: actions/setup-python@v6
         with:
           python-version-file: .python-version
 
       - name: Install uv
-        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' && steps.validate_release_token.outcome == 'success' }}
         run: python -m pip install uv
 
       - name: Sync dependencies
-        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' && steps.validate_release_token.outcome == 'success' }}
         run: python -m uv sync --dev --frozen
 
       - name: Update release PR feature flag report
-        if: ${{ env.RELEASE_PLEASE_TOKEN != '' }}
+        if: ${{ env.RELEASE_PLEASE_TOKEN != '' && steps.validate_release_token.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ env.RELEASE_PLEASE_TOKEN }}
           PR_JSON: ${{ steps.release.outputs.pr }}
