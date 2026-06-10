@@ -46,6 +46,33 @@ Generated artifacts such as `eval-results/`, `dist/`, `site/`, and `coverage.jso
 7. Run `make release-smoke` before pushing.
 8. Open a draft PR until the stream is ready for review.
 
+## Feature Gating
+
+New work must be feature-gated when it changes user-visible behavior, introduces
+risky strategy behavior, exposes an incomplete workflow, changes storage or
+release semantics, or adds a preview capability that needs validation before it
+is stable.
+
+Allocate new feature codes with:
+
+```bash
+make feature-flag NAME=<feature-name>
+```
+
+Codes use the immutable `CELN-FEAT-NNNN` format. Users activate features by
+name with `--enable-feature`, `--disable-feature`, or the `cellin.json`
+`features.enable` and `features.disable` keys. Maintainers use codes in
+`features.release.lock.json`.
+
+Feature PR merge is not graduation. Graduation requires a separate reviewed PR
+with tests, docs, compatibility notes, rollback notes, and release-lock review.
+Stable artifacts ship preview code with preview flags off by default unless a
+reviewed release lock enables them for that release. Rolling builds enable all
+registered flags.
+
+See `docs/maintainer/feature-flags.md` for registry rules, release-lock review,
+and graduation criteria.
+
 ## Quality Gates
 
 Canonical commands:
