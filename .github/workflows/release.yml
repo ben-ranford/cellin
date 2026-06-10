@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   build-release:
+    if: ${{ !contains(github.ref_name, '.dev') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
