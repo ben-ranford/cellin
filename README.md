@@ -22,6 +22,77 @@ Install from [PyPI](https://pypi.org/project/cellin/):
 python3 -m pip install cellin
 ```
 
+## Run as MCP server
+
+Cellin can run as an MCP stdio server for clients such as Claude Desktop and
+Cursor:
+
+```bash
+python3 -m pip install "cellin[mcp]"
+cellin mcp serve --check
+cellin mcp serve
+```
+
+The Docker image starts the same stdio server by default:
+
+```bash
+make docker-build
+docker run -i --rm -v cellin-data:/data cellin-mcp:latest
+```
+
+Environment variables select packaged storage presets:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CELLIN_BACKEND` | `sqlite` | `sqlite`, `postgres`, `neo4j`, or `in_memory` |
+| `CELLIN_DATA_DIR` | `/data` | SQLite subject database and subject index directory |
+| `CELLIN_CONNECTION_STRING` | unset | PostgreSQL DSN or Neo4j bolt URL for remote presets |
+
+For PostgreSQL:
+
+```bash
+docker run -i --rm \
+  -e CELLIN_BACKEND=postgres \
+  -e CELLIN_CONNECTION_STRING="$CELLIN_POSTGRES_DSN" \
+  cellin-mcp:latest
+```
+
+For Neo4j:
+
+```bash
+docker run -i --rm \
+  -v cellin-data:/data \
+  -e CELLIN_BACKEND=neo4j \
+  -e CELLIN_CONNECTION_STRING="$CELLIN_NEO4J_URI" \
+  cellin-mcp:latest
+```
+
+`docker-compose.yml` includes a single-container SQLite service and profiled
+PostgreSQL and Neo4j variants:
+
+```bash
+docker compose up --build cellin-sqlite
+CELLIN_POSTGRES_PASSWORD="$CELLIN_POSTGRES_PASSWORD" \
+CELLIN_POSTGRES_DSN="$CELLIN_POSTGRES_DSN" \
+  docker compose --profile postgres up --build cellin-postgres
+CELLIN_NEO4J_AUTH="$CELLIN_NEO4J_AUTH" \
+CELLIN_NEO4J_URI="$CELLIN_NEO4J_URI" \
+  docker compose --profile neo4j up --build cellin-neo4j
+```
+
+Claude Desktop configuration:
+
+```json
+{
+  "mcpServers": {
+    "cellin": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "cellin-data:/data", "cellin-mcp:latest"]
+    }
+  }
+}
+```
+
 ## Quickstart
 
 From the repository root:
@@ -97,13 +168,13 @@ Use `postgresql` and `mysql` with connection strings:
 
 ```json
 {
-  "memory": { "backend": "postgresql", "database_path": "postgresql://user:pass@host:5432/db" },
-  "graph": { "backend": "postgresql", "database_path": "postgresql://user:pass@host:5432/db" }
+  "memory": { "backend": "postgresql", "database_path": "postgresql://db.example.invalid:5432/db" },
+  "graph": { "backend": "postgresql", "database_path": "postgresql://db.example.invalid:5432/db" }
 }
 
 {
-  "memory": { "backend": "mysql", "database_path": "mysql://user:pass@host:3306/db" },
-  "graph": { "backend": "mysql", "database_path": "mysql://user:pass@host:3306/db" }
+  "memory": { "backend": "mysql", "database_path": "mysql://db.example.invalid:3306/db" },
+  "graph": { "backend": "mysql", "database_path": "mysql://db.example.invalid:3306/db" }
 }
 ```
 
@@ -119,8 +190,8 @@ Use `mongodb` when you want durable document storage for both memories and edges
 
 ```json
 {
-  "memory": { "backend": "mongodb", "database_path": "mongodb://user:pass@host:27017/cellin" },
-  "graph": { "backend": "mongodb", "database_path": "mongodb://user:pass@host:27017/cellin" }
+  "memory": { "backend": "mongodb", "database_path": "mongodb://db.example.invalid:27017/cellin" },
+  "graph": { "backend": "mongodb", "database_path": "mongodb://db.example.invalid:27017/cellin" }
 }
 ```
 
@@ -152,7 +223,7 @@ you prefer:
 ```json
 {
   "memory": { "backend": "sqlite", "database_path": "cellin.sqlite" },
-  "graph": { "backend": "neo4j", "database_path": "bolt://user:pass@host:7687" }
+  "graph": { "backend": "neo4j", "database_path": "bolt://graph.example.invalid:7687" }
 }
 ```
 

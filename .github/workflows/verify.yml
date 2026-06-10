@@ -84,6 +84,20 @@ jobs:
           name: package-smoke-dist
           path: dist/*
 
+  docker-mcp:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build MCP Docker image
+        run: docker build -t cellin-mcp:ci .
+
+      - name: Run MCP startup check
+        run: docker run --rm cellin-mcp:ci --check
+
   storage-defaults:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest

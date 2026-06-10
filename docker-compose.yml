@@ -1,0 +1,59 @@
+services:
+  cellin-sqlite:
+    build: .
+    image: cellin-mcp:latest
+    stdin_open: true
+    environment:
+      CELLIN_BACKEND: sqlite
+      CELLIN_DATA_DIR: /data
+    volumes:
+      - cellin-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: cellin
+      POSTGRES_USER: cellin
+      POSTGRES_PASSWORD: "${CELLIN_POSTGRES_PASSWORD:?Set CELLIN_POSTGRES_PASSWORD}"
+    volumes:
+      - cellin-postgres:/var/lib/postgresql/data
+
+  cellin-postgres:
+    image: cellin-mcp:latest
+    profiles: ["postgres"]
+    stdin_open: true
+    depends_on:
+      - postgres
+    environment:
+      CELLIN_BACKEND: postgres
+      CELLIN_DATA_DIR: /data
+      CELLIN_CONNECTION_STRING: "${CELLIN_POSTGRES_DSN:?Set CELLIN_POSTGRES_DSN}"
+    volumes:
+      - cellin-data:/data
+
+  neo4j:
+    image: neo4j:5-community
+    profiles: ["neo4j"]
+    environment:
+      NEO4J_AUTH: "${CELLIN_NEO4J_AUTH:?Set CELLIN_NEO4J_AUTH}"
+    volumes:
+      - cellin-neo4j:/data
+
+  cellin-neo4j:
+    image: cellin-mcp:latest
+    profiles: ["neo4j"]
+    stdin_open: true
+    depends_on:
+      - neo4j
+    environment:
+      CELLIN_BACKEND: neo4j
+      CELLIN_DATA_DIR: /data
+      CELLIN_CONNECTION_STRING: "${CELLIN_NEO4J_URI:?Set CELLIN_NEO4J_URI}"
+    volumes:
+      - cellin-data:/data
+
+volumes:
+  cellin-data:
+  cellin-postgres:
+  cellin-neo4j:

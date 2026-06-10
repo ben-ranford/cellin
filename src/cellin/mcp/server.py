@@ -6,10 +6,12 @@ import argparse
 import asyncio
 import importlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from cellin.core.models import JSONValue
+from cellin.mcp.config import storage_config_from_env
 from cellin.mcp.subjects import SubjectRegistry
 from cellin.mcp.tools import CellinMCPTools, dispatch_tool
 
@@ -166,7 +168,7 @@ def startup_check(subject_registry: SubjectRegistry) -> dict[str, JSONValue]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run Cellin as an MCP server.")
     parser.add_argument("--workspace-root", default=".")
-    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--data-dir", default=os.getenv("CELLIN_DATA_DIR", "data"))
     parser.add_argument("--check", action="store_true")
     return parser
 
@@ -175,6 +177,7 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     registry = SubjectRegistry(
         workspace_root=Path(args.workspace_root),
+        storage_config=storage_config_from_env(),
         data_directory=Path(args.data_dir),
     )
     if args.check:
