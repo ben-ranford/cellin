@@ -83,6 +83,7 @@ def test_cli_features_list_emits_table_and_json(
     monkeypatch: pytest.MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(app_module, "REGISTRY", TEST_REGISTRY)
+    monkeypatch.setenv("CELLIN_RELEASE_CHANNEL", "release")
 
     assert main(["features", "list"]) == 0
     table_output = capsys.readouterr().out.splitlines()
