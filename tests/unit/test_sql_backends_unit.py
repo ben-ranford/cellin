@@ -24,6 +24,30 @@ class _NullResultConnection:
         return None
 
 
+class _EmptyResult:
+    def fetchall(self) -> list[tuple[object, ...]]:
+        return []
+
+
+class _SpyConnection:
+    def __init__(self) -> None:
+        self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.executemany_calls: list[tuple[str, tuple[tuple[object, ...], ...]]] = []
+
+    def __enter__(self) -> _SpyConnection:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        del exc_type, exc, tb
+
+    def execute(self, query: str, parameters: tuple[object, ...] = ()) -> _EmptyResult:
+        self.execute_calls.append((query, parameters))
+        return _EmptyResult()
+
+    def executemany(self, query: str, rows: tuple[tuple[object, ...], ...]) -> None:
+        self.executemany_calls.append((query, rows))
+
+
 def test_sql_backend_relational_backend_guard_paths() -> None:
     sql_backends._BACKENDS.clear()
     backend = sql_backends._backend_for(
@@ -40,6 +64,45 @@ def test_sql_backend_relational_backend_guard_paths() -> None:
     backend.put_memories(())
     backend.upsert_edges(())
     backend._ensure_schema()
+
+
+def test_relational_backend_execute_many_batches_rows_into_single_executemany_call() -> None:
+    sql_backends._BACKENDS.clear()
+    connection = _SpyConnection()
+    backend = sql_backends._backend_for(
+        "spy-backend",
+        "spy-key",
+        lambda: connection,
+        parameter_style="?",
+        upsert_memory_sql=sql_backends._DUCKDB_MEMORY_UPSERT_SQL,
+        upsert_edge_sql=sql_backends._DUCKDB_EDGE_UPSERT_SQL,
+    )
+    connection.execute_calls.clear()
+    rows = tuple((f"memory-{index}", f"payload-{index}") for index in range(100))
+
+    backend._execute_many("INSERT INTO memories VALUES (?, ?)", rows)
+
+    assert connection.execute_calls == []
+    assert connection.executemany_calls == [("INSERT INTO memories VALUES (?, ?)", rows)]
+
+
+def test_relational_backend_execute_many_skips_empty_rows() -> None:
+    sql_backends._BACKENDS.clear()
+    connection = _SpyConnection()
+    backend = sql_backends._backend_for(
+        "spy-backend-empty",
+        "spy-key-empty",
+        lambda: connection,
+        parameter_style="?",
+        upsert_memory_sql=sql_backends._DUCKDB_MEMORY_UPSERT_SQL,
+        upsert_edge_sql=sql_backends._DUCKDB_EDGE_UPSERT_SQL,
+    )
+    connection.execute_calls.clear()
+
+    backend._execute_many("INSERT INTO memories VALUES (?, ?)", ())
+
+    assert connection.execute_calls == []
+    assert connection.executemany_calls == []
 
 
 def test_sql_backends_build_with_missing_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
