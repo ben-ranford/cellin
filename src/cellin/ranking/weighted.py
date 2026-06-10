@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -10,17 +9,12 @@ from math import log1p
 
 from cellin.core import FactorScore, MemoryAtom, Modality, ScoredMemory
 from cellin.ranking.profiles import WeightProfile
-
-TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def _tokenize(text: str) -> set[str]:
-    return set(TOKEN_RE.findall(text.lower()))
+from cellin.stores.vector_utils import tokenize
 
 
 def _semantic_similarity(query: str, memory: MemoryAtom) -> float:
-    query_tokens = _tokenize(query)
-    memory_tokens = _tokenize(memory.text)
+    query_tokens = tokenize(query)
+    memory_tokens = tokenize(memory.text)
     if not query_tokens or not memory_tokens:
         return 0.0
 

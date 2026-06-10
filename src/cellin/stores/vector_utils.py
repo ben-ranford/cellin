@@ -10,13 +10,18 @@ TOKEN_RE = re.compile(r"[a-z0-9]+")
 VECTOR_SIZE = 12
 
 
-def _tokenize(text: str) -> list[str]:
-    return TOKEN_RE.findall(text.lower())
+def tokenize(text: str) -> frozenset[str]:
+    """Return canonical lowercase token set semantics for lexical matching."""
+
+    return frozenset(TOKEN_RE.findall(text.lower()))
+
+
+_tokenize = tokenize
 
 
 def vectorize(text: str) -> tuple[float, ...]:
     buckets = [0.0] * VECTOR_SIZE
-    for token in _tokenize(text):
+    for token in sorted(tokenize(text)):
         digest = hashlib.sha256(token.encode("utf-8")).digest()
         bucket_index = int.from_bytes(digest[:4], byteorder="big") % VECTOR_SIZE
         buckets[bucket_index] += 1.0
