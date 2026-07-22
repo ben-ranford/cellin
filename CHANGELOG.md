@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0](https://github.com/ben-ranford/cellin/compare/v0.4.0...v0.5.0) (2026-07-22)
+
+
+### Features
+
+* **features:** add activation CLI and helpers ([91426d6](https://github.com/ben-ranford/cellin/commit/91426d6ca30b3757fe24fa02a848f51af1017f44))
+* **features:** add activation CLI and registry helpers ([#185](https://github.com/ben-ranford/cellin/issues/185)) ([f5cd1f0](https://github.com/ben-ranford/cellin/commit/f5cd1f01c0b8340bf933531e4142a8c14fa44b0f))
+* **features:** add registry resolver ([a71b3a6](https://github.com/ben-ranford/cellin/commit/a71b3a6cc46656138ba263beb245d3c4f4ae2fec))
+* **features:** add registry resolver ([#184](https://github.com/ben-ranford/cellin/issues/184)) ([dd4dce7](https://github.com/ben-ranford/cellin/commit/dd4dce7099b3ed63537448ded7e7af54fa039f98))
+* **features:** add registry resolver ([#184](https://github.com/ben-ranford/cellin/issues/184)) ([d28535a](https://github.com/ben-ranford/cellin/commit/d28535ad1de423cd9330bcb4784a866cb01b842a))
+* **features:** wire release channel reporting ([3c5e99d](https://github.com/ben-ranford/cellin/commit/3c5e99dec5fb41a8ecf8ed6547d1d4238d386286))
+* **features:** wire release reporting and lock validation ([#186](https://github.com/ben-ranford/cellin/issues/186)) ([47cb889](https://github.com/ben-ranford/cellin/commit/47cb889deccab464f08ce48ccc21e3be92bf3a11))
+* **mcp:** add Docker packaging ([54a4d81](https://github.com/ben-ranford/cellin/commit/54a4d814ffdf7d1a4f2d6296f7fcb8dda4cf93e5))
+* **mcp:** add Docker packaging ([#176](https://github.com/ben-ranford/cellin/issues/176)) ([4a999a2](https://github.com/ben-ranford/cellin/commit/4a999a21788e859e9d4fd188eeb4ad056b9e47c1))
+* **mcp:** add server tool surface ([b0a2503](https://github.com/ben-ranford/cellin/commit/b0a25033632005a85add1a10fe6f58621d23be9c))
+* **mcp:** add server tool surface ([#174](https://github.com/ben-ranford/cellin/issues/174)) ([8d9a7c9](https://github.com/ben-ranford/cellin/commit/8d9a7c9f1c0e51d48157fb926c765bd1826239c9))
+* **mcp:** add subject registry routing ([#175](https://github.com/ben-ranford/cellin/issues/175)) ([dad9f0b](https://github.com/ben-ranford/cellin/commit/dad9f0b5b7bce14c8fba7693588e6235ff9ca2ad))
+* **mcp:** add subject routing registry ([c6e5852](https://github.com/ben-ranford/cellin/commit/c6e58522350709cadcf8ffbb97e365d8d8ffda25))
+
+
+### Bug Fixes
+
+* **ci:** stabilize rolling release checks ([bc2e996](https://github.com/ben-ranford/cellin/commit/bc2e99619153860e0f750553faeff14000488e1c))
+* **ci:** stabilize rolling release checks ([b54648c](https://github.com/ben-ranford/cellin/commit/b54648c1f7ee311ce849549310d87bc391e2e0d9))
+* clear sonar quality issues ([a19a526](https://github.com/ben-ranford/cellin/commit/a19a52690d21811e60935dbee3753affbcd06065))
+* clear Sonar quality issues ([3a31f61](https://github.com/ben-ranford/cellin/commit/3a31f61fa96f493ca67e945044898b073118ce3e))
+* **dreaming:** close trust, dedup, graph, and tokenize follow-ups ([7fc4a4c](https://github.com/ben-ranford/cellin/commit/7fc4a4cfb4a07f47f0df4e8788fd0673424a143f))
+* guard github release token ([8f8ce51](https://github.com/ben-ranford/cellin/commit/8f8ce5189451e6486bde25528f099da736289238))
+* guard GitHub release token ([de44726](https://github.com/ben-ranford/cellin/commit/de447266bb136ec03a9341ed237a26da321906e3))
+* skip stable release for dev tags ([2006de7](https://github.com/ben-ranford/cellin/commit/2006de7b8a6d96c1d8f36ec5444f5c66c7870d03))
+* skip stable release for dev tags ([7e0c9cd](https://github.com/ben-ranford/cellin/commit/7e0c9cd860cd972e44ea50583db566355dd8e29c))
+* tolerate github release auth rejection ([af1173a](https://github.com/ben-ranford/cellin/commit/af1173a904d734c3a71730004cf09ecceeabfef9))
+* tolerate GitHub release auth rejection ([09826ce](https://github.com/ben-ranford/cellin/commit/09826cec30211d126bc766161fffb1973e5e03a1))
+* type arango finder callable ([cbc5b75](https://github.com/ben-ranford/cellin/commit/cbc5b756f94e8c679596f4c20fce2a43cb7b54fa))
+* type Arango finder callable ([3b36d64](https://github.com/ben-ranford/cellin/commit/3b36d644635d4bbdb3c23fc87702313c7f0a9406))
+
+
+### Documentation
+
+* **features:** document flags and graduation ([dbd99ec](https://github.com/ben-ranford/cellin/commit/dbd99ecaf297bcbaf70d36b7ab8dc7327e81f6d9))
+* **features:** document flags and graduation ([#187](https://github.com/ben-ranford/cellin/issues/187)) ([b14a787](https://github.com/ben-ranford/cellin/commit/b14a787fed8953f9325f117aa096e348074dadf7))
+
 ## [0.4.0](https://github.com/ben-ranford/cellin/compare/v0.3.0...v0.4.0) (2026-04-22)
 
 
